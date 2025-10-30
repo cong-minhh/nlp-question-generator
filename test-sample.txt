@@ -1,0 +1,24 @@
+Introduction to Machine Learning
+
+Machine Learning is a subset of Artificial Intelligence that enables computers to learn from data without being explicitly programmed.
+
+Types of Machine Learning:
+1. Supervised Learning - Uses labeled data to train models
+2. Unsupervised Learning - Finds patterns in unlabeled data
+3. Reinforcement Learning - Learns through trial and error
+
+Applications:
+- Image Recognition
+- Natural Language Processing
+- Recommendation Systems
+- Autonomous Vehicles
+
+Key Concepts:
+- Training Data: The dataset used to train the model
+- Features: Input variables used for prediction
+- Labels: Output values in supervised learning
+- Model: The mathematical representation learned from data
+- Overfitting: When a model performs well on training data but poorly on new data
+
+Conclusion:
+Machine learning is transforming industries by enabling computers to make intelligent decisions based on data patterns.
