@@ -1,11 +1,18 @@
 {
-  "name": "nlp-question-generator",
+  "name": "nlp-qg",
   "version": "1.0.0",
-  "description": "NLP service for generating quiz questions using Google Gemini API",
-  "main": "index.js",
+  "description": "Global CLI for generating quiz questions from text and documents using multiple AI providers (Gemini, OpenAI, Anthropic, DeepSeek)",
+  "main": "server.js",
+  "bin": {
+    "nlp-qg": "./cli/cli.js"
+  },
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node server.js",
+    "dev": "node server.js",
+    "setup": "node setup.js",
+    "config": "node cli/cli.js config",
+    "test": "node cli/cli.js test",
+    "cli": "node cli/cli.js"
   },
   "keywords": [
     "nlp",
