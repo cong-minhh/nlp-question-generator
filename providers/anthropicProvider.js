@@ -8,15 +8,17 @@ class AnthropicProvider extends BaseAIProvider {
         super(config);
         this.name = 'anthropic';
         this.description = 'Anthropic Claude Provider';
+        // Models in order of preference (fallback order)
         this.supportedModels = [
-            'claude-3-5-sonnet-20241022',
-            'claude-3-5-haiku-20241022',
-            'claude-3-opus-20240229',
-            'claude-3-sonnet-20240229',
-            'claude-3-haiku-20240307'
+            'claude-3-5-sonnet-20241022',  // Latest Sonnet (recommended)
+            'claude-3-5-haiku-20241022',   // Fast and efficient
+            'claude-3-opus-20240229',      // Most capable (may require higher tier)
+            'claude-3-sonnet-20240229',    // Balanced (legacy)
+            'claude-3-haiku-20240307'      // Fast (legacy)
         ];
         this.maxRetries = 3;
         this.baseDelay = 2000;
+        this.currentModelIndex = 0; // Track which model we're using
     }
 
     /**
@@ -32,11 +34,35 @@ class AnthropicProvider extends BaseAIProvider {
     }
 
     /**
-     * Initialize Anthropic client
+     * Initialize Anthropic client with automatic model fallback
      */
     async initialize(config = {}) {
         await super.initialize(config);
         this.client = this.createClient();
+        
+        // Set current model
+        const preferredModel = this.config.model || this.supportedModels[0];
+        this.currentModel = preferredModel;
+        console.log(`✓ Initialized Anthropic with model: ${this.currentModel}`);
+    }
+
+    /**
+     * Try next available model in fallback list
+     * @returns {boolean} - True if fallback successful
+     */
+    async tryFallbackModel() {
+        this.currentModelIndex++;
+        
+        if (this.currentModelIndex >= this.supportedModels.length) {
+            console.error('⚠ All Anthropic fallback models exhausted');
+            return false;
+        }
+
+        const fallbackModel = this.supportedModels[this.currentModelIndex];
+        console.log(`🔄 Falling back to Anthropic model: ${fallbackModel}`);
+        
+        this.currentModel = fallbackModel;
+        return true;
     }
 
     /**
@@ -162,21 +188,20 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     }
 
     /**
-     * Generate questions using Anthropic Claude
+     * Generate questions using Anthropic Claude with automatic model fallback
      * @param {string} text - Input text
      * @param {Object} options - Generation options
      * @returns {Promise<Object>} - Standardized questions
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
-        const model = options.model || this.config.model || 'claude-3-5-sonnet-20241022';
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
                 const messages = this.buildClaudePrompt(text, numQuestions);
 
                 const response = await this.client.messages.create({
-                    model: model,
+                    model: this.currentModel,
                     messages: messages,
                     max_tokens: 2000,
                     temperature: 0.7
@@ -191,25 +216,64 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
                 const parsedResponse = JSON.parse(cleanedText);
 
                 // Standardize and return response
-                return this.standardizeResponse(parsedResponse, numQuestions);
+                const standardized = this.standardizeResponse(parsedResponse, numQuestions);
+                
+                // Add model info to metadata
+                standardized.metadata.model = this.currentModel;
+                
+                return standardized;
                 
             } catch (error) {
                 const isLastAttempt = attempt === this.maxRetries;
                 
-                // Check if it's a rate limit error
-                if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
-                    const delay = this.baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
-                    console.log(`Anthropic API: Attempt ${attempt}/${this.maxRetries} failed: Rate limited. ${isLastAttempt ? 'No more retries.' : `Retrying in ${delay/1000}s...`}`);
+                // Check if it's a 404 error (model not found) - try fallback immediately
+                if (error.message && error.message.includes('404')) {
+                    console.warn(`⚠ Anthropic model ${this.currentModel} not available (404)`);
                     
-                    if (!isLastAttempt) {
-                        await this.sleep(delay);
-                        continue; // Retry
+                    const fallbackSuccess = await this.tryFallbackModel();
+                    if (fallbackSuccess) {
+                        console.log(`✓ Retrying with fallback model: ${this.currentModel}`);
+                        attempt = 0; // Reset attempts for new model
+                        continue;
+                    } else {
+                        throw new Error(`All Anthropic models unavailable. Please check your API key or subscription tier.`);
                     }
                 }
                 
-                // For other errors or last attempt, throw
+                // Check if it's a rate limit error (429) - retry with backoff
+                if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
+                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
+                    
+                    if (!isLastAttempt) {
+                        console.log(`⚠ Anthropic API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} rate limited. Retrying in ${delay/1000}s...`);
+                        await this.sleep(delay);
+                        continue;
+                    } else {
+                        console.warn(`⚠ ${this.currentModel} rate limited after ${this.maxRetries} attempts.`);
+                        throw new Error(`Anthropic model ${this.currentModel} is rate limited. Please try again later or upgrade your plan.`);
+                    }
+                }
+                
+                // Check if it's a 529 error (overloaded) - retry with backoff
+                if (error.message && (error.message.includes('529') || error.message.includes('overloaded'))) {
+                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
+                    
+                    if (!isLastAttempt) {
+                        console.log(`⚠ Anthropic API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} overloaded. Retrying in ${delay/1000}s...`);
+                        await this.sleep(delay);
+                        continue;
+                    } else {
+                        console.warn(`⚠ ${this.currentModel} overloaded after ${this.maxRetries} attempts.`);
+                        throw new Error(`Anthropic model ${this.currentModel} is currently overloaded. Please try again in a few moments.`);
+                    }
+                }
+                
+                // For other errors or last attempt
                 console.error('Anthropic API Error:', error.message);
-                throw new Error(`Anthropic generation failed: ${error.message}`);
+                
+                if (isLastAttempt) {
+                    throw new Error(`Anthropic generation failed: ${error.message}`);
+                }
             }
         }
         
@@ -217,7 +281,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     }
 
     /**
-     * Test Anthropic connection
+     * Test Anthropic connection with automatic fallback
      * @returns {Promise<Object>} - Test result
      */
     async testConnection() {
@@ -229,9 +293,9 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
             
             return {
                 success: true,
-                message: 'Anthropic connection successful',
+                message: `Anthropic connection successful (using ${this.currentModel})`,
                 provider: this.name,
-                model: this.config.model || 'claude-3-5-sonnet-20241022',
+                model: this.currentModel,
                 testResult: result.questions?.length === 1 ? 'pass' : 'unexpected response'
             };
         } catch (error) {

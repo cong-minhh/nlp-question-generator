@@ -47,8 +47,12 @@ class ProviderManager {
     async loadProviders(config = {}) {
         // Load Gemini Provider
         try {
-            const geminiProvider = new GeminiProvider(config.gemini || {});
-            await geminiProvider.initialize(config);
+            const geminiConfig = {
+                apiKey: process.env.GEMINI_API_KEY,
+                ...(config.gemini || {})
+            };
+            const geminiProvider = new GeminiProvider(geminiConfig);
+            await geminiProvider.initialize(geminiConfig);
             this.providers.set('gemini', geminiProvider);
             console.log('✓ Gemini provider loaded');
         } catch (error) {
@@ -57,8 +61,12 @@ class ProviderManager {
 
         // Load OpenAI Provider
         try {
-            const openaiProvider = new OpenAIProvider(config.openai || {});
-            await openaiProvider.initialize(config);
+            const openaiConfig = {
+                apiKey: process.env.OPENAI_API_KEY,
+                ...(config.openai || {})
+            };
+            const openaiProvider = new OpenAIProvider(openaiConfig);
+            await openaiProvider.initialize(openaiConfig);
             this.providers.set('openai', openaiProvider);
             console.log('✓ OpenAI provider loaded');
         } catch (error) {
@@ -67,8 +75,12 @@ class ProviderManager {
 
         // Load Anthropic Provider
         try {
-            const anthropicProvider = new AnthropicProvider(config.anthropic || {});
-            await anthropicProvider.initialize(config);
+            const anthropicConfig = {
+                apiKey: process.env.ANTHROPIC_API_KEY,
+                ...(config.anthropic || {})
+            };
+            const anthropicProvider = new AnthropicProvider(anthropicConfig);
+            await anthropicProvider.initialize(anthropicConfig);
             this.providers.set('anthropic', anthropicProvider);
             console.log('✓ Anthropic provider loaded');
         } catch (error) {
@@ -77,8 +89,12 @@ class ProviderManager {
 
         // Load DeepSeek Provider
         try {
-            const deepseekProvider = new DeepSeekProvider(config.deepseek || {});
-            await deepseekProvider.initialize(config);
+            const deepseekConfig = {
+                apiKey: process.env.DEEPSEEK_API_KEY,
+                ...(config.deepseek || {})
+            };
+            const deepseekProvider = new DeepSeekProvider(deepseekConfig);
+            await deepseekProvider.initialize(deepseekConfig);
             this.providers.set('deepseek', deepseekProvider);
             console.log('✓ DeepSeek provider loaded');
         } catch (error) {

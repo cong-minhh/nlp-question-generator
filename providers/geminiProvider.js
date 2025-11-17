@@ -9,13 +9,18 @@ class GeminiProvider extends BaseAIProvider {
         super(config);
         this.name = 'gemini';
         this.description = 'Google Gemini AI Provider';
+        // Models in order of preference (fallback order)
+        // Note: Free tier API keys typically only have access to gemini-2.5-flash
         this.supportedModels = [
-            'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'gemini-2.5-flash'
+            'gemini-2.5-flash',      // Latest, free tier compatible
+            'models/gemini-2.5-flash', // Alternative path
+            'gemini-1.5-flash',      // Older version (may require paid tier)
+            'gemini-1.5-pro',        // Pro version (may require paid tier)
+            'gemini-pro'             // Legacy (may require paid tier)
         ];
         this.maxRetries = 3;
         this.baseDelay = 2000;
+        this.currentModelIndex = 0; // Track which model we're using
     }
 
     /**
@@ -31,12 +36,56 @@ class GeminiProvider extends BaseAIProvider {
     }
 
     /**
-     * Initialize Gemini client
+     * Initialize Gemini client with automatic model fallback
      */
     async initialize(config = {}) {
         await super.initialize(config);
         this.genAI = new GoogleGenerativeAI(this.config.apiKey);
-        this.model = this.genAI.getGenerativeModel({ model: this.config.model || 'gemini-2.5-flash' });
+        
+        // Try to initialize with the preferred model
+        const preferredModel = this.config.model || this.supportedModels[0];
+        await this.initializeModel(preferredModel);
+    }
+
+    /**
+     * Initialize a specific model with fallback support
+     * @param {string} modelName - Model to initialize
+     */
+    async initializeModel(modelName) {
+        try {
+            this.model = this.genAI.getGenerativeModel({ model: modelName });
+            this.currentModel = modelName;
+            console.log(`✓ Initialized Gemini with model: ${modelName}`);
+        } catch (error) {
+            console.warn(`⚠ Failed to initialize model ${modelName}: ${error.message}`);
+            // Will fallback during generation if needed
+            this.model = this.genAI.getGenerativeModel({ model: modelName });
+            this.currentModel = modelName;
+        }
+    }
+
+    /**
+     * Try next available model in fallback list
+     * @returns {boolean} - True if fallback successful
+     */
+    async tryFallbackModel() {
+        this.currentModelIndex++;
+        
+        if (this.currentModelIndex >= this.supportedModels.length) {
+            console.error('⚠ All fallback models exhausted');
+            return false;
+        }
+
+        const fallbackModel = this.supportedModels[this.currentModelIndex];
+        console.log(`🔄 Falling back to model: ${fallbackModel}`);
+        
+        try {
+            await this.initializeModel(fallbackModel);
+            return true;
+        } catch (error) {
+            console.warn(`⚠ Fallback to ${fallbackModel} failed: ${error.message}`);
+            return await this.tryFallbackModel(); // Try next model
+        }
     }
 
     /**
@@ -71,14 +120,13 @@ class GeminiProvider extends BaseAIProvider {
     }
 
     /**
-     * Generate questions using Gemini AI
+     * Generate questions using Gemini AI with automatic model fallback
      * @param {string} text - Input text
      * @param {Object} options - Generation options
      * @returns {Promise<Object>} - Standardized questions
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
-        const model = options.model || this.config.model || 'gemini-2.5-flash';
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
@@ -95,25 +143,51 @@ class GeminiProvider extends BaseAIProvider {
                 const parsedResponse = JSON.parse(cleanedText);
 
                 // Standardize and return response
-                return this.standardizeResponse(parsedResponse, numQuestions);
+                const standardized = this.standardizeResponse(parsedResponse, numQuestions);
+                
+                // Add model info to metadata
+                standardized.metadata.model = this.currentModel;
+                
+                return standardized;
                 
             } catch (error) {
                 const isLastAttempt = attempt === this.maxRetries;
                 
-                // Check if it's a 503 error (service overloaded)
-                if (error.message && error.message.includes('503')) {
-                    const delay = this.baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
-                    console.log(`Gemini API: Attempt ${attempt}/${this.maxRetries} failed: Service overloaded. ${isLastAttempt ? 'No more retries.' : `Retrying in ${delay/1000}s...`}`);
+                // Check if it's a 404 error (model not found) - try fallback immediately
+                if (error.message && error.message.includes('404')) {
+                    console.warn(`⚠ Model ${this.currentModel} not available (404)`);
                     
-                    if (!isLastAttempt) {
-                        await this.sleep(delay);
-                        continue; // Retry
+                    const fallbackSuccess = await this.tryFallbackModel();
+                    if (fallbackSuccess) {
+                        console.log(`✓ Retrying with fallback model: ${this.currentModel}`);
+                        attempt = 0; // Reset attempts for new model
+                        continue; // Retry with new model
+                    } else {
+                        throw new Error(`All Gemini models unavailable. Please check your API key or try again later.`);
                     }
                 }
                 
-                // For other errors or last attempt, throw
+                // Check if it's a 503 error (service overloaded) - retry with backoff, don't fallback
+                if (error.message && error.message.includes('503')) {
+                    const delay = this.baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
+                    
+                    if (!isLastAttempt) {
+                        console.log(`⚠ Gemini API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} overloaded. Retrying in ${delay/1000}s...`);
+                        await this.sleep(delay);
+                        continue; // Retry with same model
+                    } else {
+                        // On last attempt, just throw - don't fallback for 503 as the model works
+                        console.warn(`⚠ ${this.currentModel} is overloaded after ${this.maxRetries} attempts. Please try again later.`);
+                        throw new Error(`Gemini model ${this.currentModel} is currently overloaded. Please try again in a few moments.`);
+                    }
+                }
+                
+                // For other errors or exhausted all options
                 console.error('Gemini API Error:', error.message);
-                throw new Error(`Gemini generation failed: ${error.message}`);
+                
+                if (isLastAttempt) {
+                    throw new Error(`Gemini generation failed: ${error.message}`);
+                }
             }
         }
         
@@ -121,7 +195,7 @@ class GeminiProvider extends BaseAIProvider {
     }
 
     /**
-     * Test Gemini connection
+     * Test Gemini connection with automatic fallback
      * @returns {Promise<Object>} - Test result
      */
     async testConnection() {
@@ -133,9 +207,9 @@ class GeminiProvider extends BaseAIProvider {
             
             return {
                 success: true,
-                message: 'Gemini connection successful',
+                message: `Gemini connection successful (using ${this.currentModel})`,
                 provider: this.name,
-                model: this.config.model || 'gemini-2.5-flash',
+                model: this.currentModel,
                 testResult: result.questions?.length === 1 ? 'pass' : 'unexpected response'
             };
         } catch (error) {

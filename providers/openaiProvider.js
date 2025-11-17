@@ -8,15 +8,17 @@ class OpenAIProvider extends BaseAIProvider {
         super(config);
         this.name = 'openai';
         this.description = 'OpenAI GPT Provider';
+        // Models in order of preference (fallback order)
         this.supportedModels = [
-            'gpt-3.5-turbo',
-            'gpt-4',
-            'gpt-4-turbo',
-            'gpt-4o'
+            'gpt-4o',           // Latest and most capable
+            'gpt-4-turbo',      // Fast GPT-4
+            'gpt-4',            // Standard GPT-4 (may require higher tier)
+            'gpt-3.5-turbo'     // Most accessible, lower cost
         ];
         this.baseURL = config.baseURL || 'https://api.openai.com/v1';
         this.maxRetries = 3;
         this.baseDelay = 2000;
+        this.currentModelIndex = 0; // Track which model we're using
     }
 
     /**
@@ -32,11 +34,35 @@ class OpenAIProvider extends BaseAIProvider {
     }
 
     /**
-     * Initialize OpenAI client
+     * Initialize OpenAI client with automatic model fallback
      */
     async initialize(config = {}) {
         await super.initialize(config);
         this.client = this.createClient();
+        
+        // Set current model
+        const preferredModel = this.config.model || this.supportedModels[0];
+        this.currentModel = preferredModel;
+        console.log(`✓ Initialized OpenAI with model: ${this.currentModel}`);
+    }
+
+    /**
+     * Try next available model in fallback list
+     * @returns {boolean} - True if fallback successful
+     */
+    async tryFallbackModel() {
+        this.currentModelIndex++;
+        
+        if (this.currentModelIndex >= this.supportedModels.length) {
+            console.error('⚠ All OpenAI fallback models exhausted');
+            return false;
+        }
+
+        const fallbackModel = this.supportedModels[this.currentModelIndex];
+        console.log(`🔄 Falling back to OpenAI model: ${fallbackModel}`);
+        
+        this.currentModel = fallbackModel;
+        return true;
     }
 
     /**
@@ -119,21 +145,20 @@ class OpenAIProvider extends BaseAIProvider {
     }
 
     /**
-     * Generate questions using OpenAI
+     * Generate questions using OpenAI with automatic model fallback
      * @param {string} text - Input text
      * @param {Object} options - Generation options
      * @returns {Promise<Object>} - Standardized questions
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
-        const model = options.model || this.config.model || 'gpt-3.5-turbo';
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
                 const prompt = this.buildPrompt(text, numQuestions);
 
                 const response = await this.client.chat.completions.create({
-                    model: model,
+                    model: this.currentModel,
                     messages: [
                         {
                             role: 'system',
@@ -157,25 +182,64 @@ class OpenAIProvider extends BaseAIProvider {
                 const parsedResponse = JSON.parse(cleanedText);
 
                 // Standardize and return response
-                return this.standardizeResponse(parsedResponse, numQuestions);
+                const standardized = this.standardizeResponse(parsedResponse, numQuestions);
+                
+                // Add model info to metadata
+                standardized.metadata.model = this.currentModel;
+                
+                return standardized;
                 
             } catch (error) {
                 const isLastAttempt = attempt === this.maxRetries;
                 
-                // Check if it's a rate limit error
-                if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
-                    const delay = this.baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
-                    console.log(`OpenAI API: Attempt ${attempt}/${this.maxRetries} failed: Rate limited. ${isLastAttempt ? 'No more retries.' : `Retrying in ${delay/1000}s...`}`);
+                // Check if it's a 404 error (model not found) - try fallback immediately
+                if (error.message && error.message.includes('404')) {
+                    console.warn(`⚠ OpenAI model ${this.currentModel} not available (404)`);
                     
-                    if (!isLastAttempt) {
-                        await this.sleep(delay);
-                        continue; // Retry
+                    const fallbackSuccess = await this.tryFallbackModel();
+                    if (fallbackSuccess) {
+                        console.log(`✓ Retrying with fallback model: ${this.currentModel}`);
+                        attempt = 0; // Reset attempts for new model
+                        continue;
+                    } else {
+                        throw new Error(`All OpenAI models unavailable. Please check your API key or subscription tier.`);
                     }
                 }
                 
-                // For other errors or last attempt, throw
+                // Check if it's a rate limit error (429) - retry with backoff
+                if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
+                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
+                    
+                    if (!isLastAttempt) {
+                        console.log(`⚠ OpenAI API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} rate limited. Retrying in ${delay/1000}s...`);
+                        await this.sleep(delay);
+                        continue;
+                    } else {
+                        console.warn(`⚠ ${this.currentModel} rate limited after ${this.maxRetries} attempts.`);
+                        throw new Error(`OpenAI model ${this.currentModel} is rate limited. Please try again later or check your quota.`);
+                    }
+                }
+                
+                // Check if it's a 503 error (service unavailable) - retry with backoff
+                if (error.message && (error.message.includes('503') || error.message.includes('service unavailable'))) {
+                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
+                    
+                    if (!isLastAttempt) {
+                        console.log(`⚠ OpenAI API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} unavailable. Retrying in ${delay/1000}s...`);
+                        await this.sleep(delay);
+                        continue;
+                    } else {
+                        console.warn(`⚠ ${this.currentModel} unavailable after ${this.maxRetries} attempts.`);
+                        throw new Error(`OpenAI model ${this.currentModel} is currently unavailable. Please try again in a few moments.`);
+                    }
+                }
+                
+                // For other errors or last attempt
                 console.error('OpenAI API Error:', error.message);
-                throw new Error(`OpenAI generation failed: ${error.message}`);
+                
+                if (isLastAttempt) {
+                    throw new Error(`OpenAI generation failed: ${error.message}`);
+                }
             }
         }
         
@@ -183,7 +247,7 @@ class OpenAIProvider extends BaseAIProvider {
     }
 
     /**
-     * Test OpenAI connection
+     * Test OpenAI connection with automatic fallback
      * @returns {Promise<Object>} - Test result
      */
     async testConnection() {
@@ -195,9 +259,9 @@ class OpenAIProvider extends BaseAIProvider {
             
             return {
                 success: true,
-                message: 'OpenAI connection successful',
+                message: `OpenAI connection successful (using ${this.currentModel})`,
                 provider: this.name,
-                model: this.config.model || 'gpt-3.5-turbo',
+                model: this.currentModel,
                 testResult: result.questions?.length === 1 ? 'pass' : 'unexpected response'
             };
         } catch (error) {
