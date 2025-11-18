@@ -184,6 +184,12 @@ class OpenAIProvider extends BaseAIProvider {
                 // Standardize and return response
                 const standardized = this.standardizeResponse(parsedResponse, numQuestions);
                 
+                // Trim to requested number of questions (AI sometimes generates more)
+                if (standardized.questions.length > numQuestions) {
+                    standardized.questions = standardized.questions.slice(0, numQuestions);
+                    standardized.metadata.num_questions = numQuestions;
+                }
+                
                 // Add model info to metadata
                 standardized.metadata.model = this.currentModel;
                 

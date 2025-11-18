@@ -237,10 +237,7 @@ class MultiProviderQuestionGenerator {
     }
 }
 
-// Export both the new multi-provider class and a compatibility wrapper
-module.exports = MultiProviderQuestionGenerator;
-
-// Legacy compatibility wrapper
+// Legacy compatibility wrapper for backward compatibility
 class GeminiQuestionGenerator {
     constructor() {
         this.multiProvider = new MultiProviderQuestionGenerator();
@@ -280,3 +277,8 @@ class GeminiQuestionGenerator {
         return cleanedText;
     }
 }
+
+// Export both classes - default is the legacy wrapper for backward compatibility
+module.exports = GeminiQuestionGenerator;
+module.exports.MultiProviderQuestionGenerator = MultiProviderQuestionGenerator;
+module.exports.GeminiQuestionGenerator = GeminiQuestionGenerator;

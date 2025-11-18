@@ -4,7 +4,7 @@ A Node.js service that uses Google's Gemini API (free tier) to automatically gen
 
 ## Features
 
-- Uses Google Gemini 2.0 Flash (free tier)
+- Uses Google Gemini 2.5 Flash (free tier)
 - Generates multiple-choice questions with 4 options
 - **NEW: File upload support** (PDF, DOC, DOCX, PPT, PPTX, TXT)
 - **Multi-file processing** - upload up to 10 files at once

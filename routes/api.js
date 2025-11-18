@@ -21,7 +21,9 @@ const questionGenerator = new GeminiQuestionGenerator();
  */
 router.post('/generate', async (req, res) => {
     try {
-        const { text, num_questions = 10 } = req.body;
+        // Accept both num_questions and numQuestions for flexibility
+        const { text, num_questions, numQuestions } = req.body;
+        const requestedQuestions = num_questions || numQuestions || 10;
 
         // Validate input
         const textValidation = validateTextInput(text);
@@ -29,7 +31,7 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json(createErrorResponse(textValidation.error, 400));
         }
 
-        const numQuestionsValidation = validateNumQuestions(num_questions);
+        const numQuestionsValidation = validateNumQuestions(requestedQuestions);
         if (!numQuestionsValidation.valid) {
             return res.status(400).json(createErrorResponse(numQuestionsValidation.error, 400));
         }
@@ -61,7 +63,9 @@ router.post('/generate-from-files', upload.array('files', 10), async (req, res) 
             ));
         }
 
-        const numQuestionsValidation = validateNumQuestions(req.body.num_questions || 10);
+        // Accept both num_questions and numQuestions for flexibility
+        const requestedQuestions = req.body.num_questions || req.body.numQuestions || 10;
+        const numQuestionsValidation = validateNumQuestions(requestedQuestions);
         if (!numQuestionsValidation.valid) {
             await cleanupFiles(uploadedFiles.map(f => f.path));
             return res.status(400).json(createErrorResponse(numQuestionsValidation.error, 400));
@@ -107,6 +111,91 @@ router.post('/generate-from-files', upload.array('files', 10), async (req, res) 
 });
 
 /**
+ * GET endpoint to list available providers
+ */
+router.get('/providers', async (req, res) => {
+    try {
+        const providerManager = req.app.locals.providerManager;
+        const providers = providerManager.listProviders();
+        const currentProvider = providerManager.currentProvider;
+        
+        res.json(createSuccessResponse({
+            currentProvider,
+            providers: providers.map(p => ({
+                name: p.name,
+                description: p.description,
+                configured: p.configured,
+                available: p.available,
+                isCurrent: p.name === currentProvider
+            }))
+        }));
+    } catch (error) {
+        console.error('API Error:', error);
+        res.status(500).json(createErrorResponse(`Failed to list providers: ${error.message}`, 500));
+    }
+});
+
+/**
+ * GET endpoint to get current provider info
+ */
+router.get('/current-provider', async (req, res) => {
+    try {
+        const providerManager = req.app.locals.providerManager;
+        const provider = providerManager.getCurrentProvider();
+        
+        res.json(createSuccessResponse({
+            name: provider.name,
+            description: provider.description,
+            model: provider.currentModel || provider.config.model,
+            configured: provider.isConfigured()
+        }));
+    } catch (error) {
+        console.error('API Error:', error);
+        res.status(500).json(createErrorResponse(`Failed to get current provider: ${error.message}`, 500));
+    }
+});
+
+/**
+ * POST endpoint to switch AI provider
+ * Body: { provider: string }
+ */
+router.post('/switch-provider', async (req, res) => {
+    try {
+        const { provider } = req.body;
+        
+        if (!provider) {
+            return res.status(400).json(createErrorResponse('Provider name is required', 400));
+        }
+        
+        const providerManager = req.app.locals.providerManager;
+        
+        // Check if provider is available
+        if (!providerManager.hasProvider(provider)) {
+            return res.status(400).json(createErrorResponse(
+                `Provider '${provider}' is not available or not configured. Available providers: ${
+                    providerManager.listProviders()
+                        .filter(p => p.configured)
+                        .map(p => p.name)
+                        .join(', ')
+                }`,
+                400
+            ));
+        }
+        
+        // Switch provider
+        providerManager.switchProvider(provider);
+        
+        res.json(createSuccessResponse({
+            message: `Switched to ${provider} provider`,
+            currentProvider: provider
+        }));
+    } catch (error) {
+        console.error('API Error:', error);
+        res.status(500).json(createErrorResponse(`Failed to switch provider: ${error.message}`, 500));
+    }
+});
+
+/**
  * Health check endpoint
  */
 router.get('/health', (req, res) => {
@@ -114,7 +203,7 @@ router.get('/health', (req, res) => {
         status: 'healthy',
         service: 'NLP Question Generator',
         version: '2.0.0',
-        features: ['text-input', 'file-upload', 'multi-file']
+        features: ['text-input', 'file-upload', 'multi-file', 'multi-provider']
     }));
 });
 
@@ -152,6 +241,22 @@ router.get('/', (req, res) => {
                     'Combined question generation',
                     'Per-file status reporting'
                 ]
+            },
+            'GET /providers': {
+                description: 'List all available AI providers and their status'
+            },
+            'GET /current-provider': {
+                description: 'Get information about the currently active provider'
+            },
+            'POST /switch-provider': {
+                description: 'Switch to a different AI provider',
+                contentType: 'application/json',
+                body: {
+                    provider: 'string (required) - Provider name (gemini, openai, anthropic, deepseek)'
+                },
+                example: {
+                    provider: 'deepseek'
+                }
             },
             'GET /health': {
                 description: 'Check service health and available features'

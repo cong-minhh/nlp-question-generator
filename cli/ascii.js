@@ -53,8 +53,6 @@ ${colors.green}    ╱|、${colors.reset}                 ${colors.cyan}╭─�
 ${colors.green}   (˚ˎ 。7${colors.reset}               ${colors.cyan}|   NLP Question    |${colors.reset}
 ${colors.green}   |、˜〵${colors.reset}                ${colors.cyan}|    Generator      |${colors.reset}
 ${colors.green}   じしˍ,)ノ${colors.reset}             ${colors.cyan}╰───────────────────╯${colors.reset}
-
-${colors.green}  🌱  ${colors.yellow}Multi-Questions-Generator  ${colors.green}🌱${colors.reset}
 ${colors.gray}  ─────────────────────────────────────${colors.reset}
 `;
 

@@ -12,10 +12,13 @@ const DeepSeekProvider = require('./deepseekProvider');
 class ProviderManager {
     constructor(config = {}) {
         this.providers = new Map();
-        this.defaultProvider = config.defaultProvider || 'gemini';
+        // Read default provider from environment variable or config
+        this.defaultProvider = process.env.DEFAULT_PROVIDER || config.defaultProvider || 'gemini';
         this.currentProvider = config.currentProvider || this.defaultProvider;
         this.config = config;
         this.initialized = false;
+        
+        console.log(`Default provider set to: ${this.defaultProvider}`);
     }
 
     /**

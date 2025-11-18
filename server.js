@@ -94,7 +94,6 @@ async function initializeServer() {
             console.log(`${cliUI.colors.cyan}NLP Question Generator running on port ${PORT}${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run setup' for first-time configuration${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run config' for API key configuration${cliUI.colors.reset}`);
-            console.log(`${cliUI.colors.gray}See MULTI_PROVIDER_GUIDE.md for detailed documentation${cliUI.colors.reset}`);
             cliUI.showSystemInfo();
         });
     } catch (error) {
@@ -111,32 +110,41 @@ async function initializeServer() {
  */
 async function checkSetupNeeded() {
     const fs = require('fs');
-    const configDir = path.join(__dirname, '.nlp-qg');
-    const configFile = path.join(configDir, 'config.json');
     const envFile = path.join(__dirname, '.env');
     
-    // Check if config directory exists
-    const configExists = fs.existsSync(configFile);
+    // Check if .env exists
     const envExists = fs.existsSync(envFile);
     
-    // Check if .env has any API keys
+    if (!envExists) {
+        return {
+            shouldSetup: true,
+            reason: 'Missing .env file'
+        };
+    }
+    
+    // Check if .env has at least one valid API key (not empty)
     let hasApiKeys = false;
-    if (envExists) {
-        try {
-            const envContent = fs.readFileSync(envFile, 'utf8');
-            const apiKeys = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DEEPSEEK_API_KEY'];
-            hasApiKeys = apiKeys.some(key => {
-                const regex = new RegExp(`${key}=[^\\s]`, 'g');
-                return regex.test(envContent);
-            });
-        } catch (error) {
-            console.warn('Could not read .env file:', error.message);
-        }
+    try {
+        const envContent = fs.readFileSync(envFile, 'utf8');
+        const apiKeys = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DEEPSEEK_API_KEY'];
+        
+        hasApiKeys = apiKeys.some(key => {
+            // Match pattern: KEY=value (where value is not empty and not just whitespace)
+            const regex = new RegExp(`^${key}=(.+)$`, 'm');
+            const match = envContent.match(regex);
+            return match && match[1].trim().length > 0;
+        });
+    } catch (error) {
+        console.warn('Could not read .env file:', error.message);
+        return {
+            shouldSetup: true,
+            reason: 'Error reading .env file'
+        };
     }
     
     return {
-        shouldSetup: !configExists || !envExists || !hasApiKeys,
-        reason: !configExists ? 'Missing configuration' : !envExists ? 'Missing .env file' : !hasApiKeys ? 'No API keys configured' : 'Configuration complete'
+        shouldSetup: !hasApiKeys,
+        reason: hasApiKeys ? 'Configuration complete' : 'No API keys configured'
     };
 }
 
