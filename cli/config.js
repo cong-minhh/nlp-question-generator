@@ -76,7 +76,7 @@ class ConfigManager {
      * Initialize configuration
      */
     async init() {
-        console.log('🔧 NLP Question Generator - API Key Configuration\n');
+        console.log('NLP Question Generator - API Key Configuration\n');
         
         // Create .env if it doesn't exist
         if (!fs.existsSync(this.envFile)) {
@@ -126,7 +126,7 @@ class ConfigManager {
                 await this.showHelp();
                 break;
             case '0':
-                console.log('👋 Goodbye! Restart your server to apply changes.');
+                console.log('Goodbye! Restart your server to apply changes.');
                 this.rl.close();
                 process.exit(0);
             default:
@@ -139,16 +139,16 @@ class ConfigManager {
      * View current configuration
      */
     async viewConfig() {
-        console.log('\n📋 Current Configuration:\n');
+        console.log('\nCurrent Configuration:\n');
         
         const env = this.readEnv();
         
         // Show default provider
         const defaultProvider = env.DEFAULT_PROVIDER || 'gemini';
-        console.log(`🎯 Default AI Provider: ${defaultProvider}\n`);
+        console.log(`Default AI Provider: ${defaultProvider}\n`);
         
         // Show API key status
-        console.log('🔑 API Key Status:\n');
+        console.log('API Key Status:\n');
         
         const providers = {
             'GEMINI_API_KEY': 'Google Gemini',
@@ -169,7 +169,7 @@ class ConfigManager {
             }
         }
         
-        console.log(`\n📁 Configuration file: ${this.envFile}`);
+        console.log(`\nConfiguration file: ${this.envFile}`);
         console.log();
 
         await this.backToMenu();
@@ -179,7 +179,7 @@ class ConfigManager {
      * Configure API keys for providers
      */
     async configureApiKeys() {
-        console.log('\n🔐 Configure API Keys\n');
+        console.log('\nConfigure API Keys\n');
         console.log('Enter API keys (or press Enter to skip)\n');
         
         const env = this.readEnv();
@@ -225,7 +225,7 @@ class ConfigManager {
      * Set default AI provider
      */
     async setDefaultProvider() {
-        console.log('\n🎯 Set Default AI Provider\n');
+        console.log('\nSet Default AI Provider\n');
         
         const env = this.readEnv();
         
@@ -299,9 +299,9 @@ class ConfigManager {
      */
     async showHelp() {
         console.log(`
-📚 Help & Documentation
+Help & Documentation
 
-🎯 Supported AI Providers:
+Supported AI Providers:
   • Google Gemini - Get free API key: https://makersuite.google.com/app/apikey
   • OpenAI GPT - Get API key: https://platform.openai.com/api-keys
   • Anthropic Claude - Get API key: https://console.anthropic.com/
@@ -309,24 +309,24 @@ class ConfigManager {
   • Kimi AI Global - Get API key: https://platform.moonshot.ai/
   • Kimi AI China - Get API key: https://platform.moonshot.cn/
 
-🔧 Configuration:
+Configuration:
   • API keys are stored in .env file in your project root
   • Never commit .env file to version control
   • Restart server after changing API keys
 
-📝 How to Use:
+How to Use:
   1. Get API key from provider website (see links above)
   2. Run 'npm run config' to configure
   3. Enter your API key when prompted
   4. Restart server: 'npm start'
 
-🌐 API Endpoints:
+API Endpoints:
   • POST /api/generate - Generate questions from text
   • POST /api/generate-from-files - Generate from uploaded files
   • GET /api/providers - List available providers
   • POST /api/switch-provider - Switch between providers
 
-💡 Tips:
+Tips:
   • Free tier API keys work great for testing
   • Gemini (Google) has generous free tier
   • All providers have automatic fallback and retry logic

@@ -3,6 +3,7 @@ const upload = require('../config/upload');
 const { processFiles } = require('../services/textExtractor');
 const { cleanupFiles } = require('../utils/fileUtils');
 const GeminiQuestionGenerator = require('../services/questionGenerator');
+const { authenticate, optionalAuth } = require('../middleware/auth');
 const {
     validateTextInput,
     validateNumQuestions,
@@ -18,8 +19,9 @@ const questionGenerator = new GeminiQuestionGenerator();
 /**
  * POST endpoint to generate questions
  * Body: { text: string, num_questions?: number }
+ * Requires authentication in private mode
  */
-router.post('/generate', async (req, res) => {
+router.post('/generate', authenticate, async (req, res) => {
     try {
         // Accept both num_questions and numQuestions for flexibility
         const { text, num_questions, numQuestions } = req.body;
@@ -50,8 +52,9 @@ router.post('/generate', async (req, res) => {
 /**
  * POST endpoint to generate questions from uploaded files
  * Body: files (multipart/form-data), num_questions (optional)
+ * Requires authentication in private mode
  */
-router.post('/generate-from-files', upload.array('files', 10), async (req, res) => {
+router.post('/generate-from-files', authenticate, upload.array('files', 10), async (req, res) => {
     const uploadedFiles = req.files || [];
     
     try {
@@ -158,8 +161,9 @@ router.get('/current-provider', async (req, res) => {
 /**
  * POST endpoint to switch AI provider
  * Body: { provider: string }
+ * Requires authentication in private mode
  */
-router.post('/switch-provider', async (req, res) => {
+router.post('/switch-provider', authenticate, async (req, res) => {
     try {
         const { provider } = req.body;
         

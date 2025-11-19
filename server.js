@@ -111,7 +111,22 @@ async function initializeServer() {
         app.listen(PORT, () => {
             console.log(`\n${cliUI.colors.green}Server is ready!${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.cyan}NLP Question Generator running on port ${PORT}${cliUI.colors.reset}`);
-            console.log(`\n${cliUI.colors.yellow}📚 API Documentation: ${cliUI.colors.cyan}http://localhost:${PORT}/docs${cliUI.colors.reset}`);
+            
+            // Show security status
+            const apiMode = process.env.API_MODE || 'public';
+            const hasApiKey = process.env.SERVER_API_KEY && process.env.SERVER_API_KEY.trim() !== '';
+            
+            if (apiMode === 'private' && hasApiKey) {
+                console.log(`\n${cliUI.colors.green}🔒 Security: PRIVATE MODE (API key required)${cliUI.colors.reset}`);
+            } else if (apiMode === 'private' && !hasApiKey) {
+                console.log(`\n${cliUI.colors.yellow}⚠️  Security: PRIVATE MODE but no API key set!${cliUI.colors.reset}`);
+                console.log(`${cliUI.colors.gray}   Run 'npm run generate-key' to create an API key${cliUI.colors.reset}`);
+            } else {
+                console.log(`\n${cliUI.colors.yellow}🌐 Security: PUBLIC MODE (no authentication)${cliUI.colors.reset}`);
+                console.log(`${cliUI.colors.gray}   Set API_MODE=private in .env for production${cliUI.colors.reset}`);
+            }
+            
+            console.log(`\n${cliUI.colors.yellow}API Documentation: ${cliUI.colors.cyan}http://localhost:${PORT}/docs${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run setup' for first-time configuration${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run config' for API key configuration${cliUI.colors.reset}`);
             cliUI.showSystemInfo();
