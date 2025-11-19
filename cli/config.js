@@ -56,9 +56,11 @@ class ConfigManager {
             `OPENAI_API_KEY=${env.OPENAI_API_KEY || ''}`,
             `ANTHROPIC_API_KEY=${env.ANTHROPIC_API_KEY || ''}`,
             `DEEPSEEK_API_KEY=${env.DEEPSEEK_API_KEY || ''}`,
+            `KIMI_API_KEY=${env.KIMI_API_KEY || ''}`,
+            `KIMICN_API_KEY=${env.KIMICN_API_KEY || ''}`,
             '',
             '# Default AI Provider',
-            '# Options: gemini, openai, anthropic, deepseek',
+            '# Options: gemini, openai, anthropic, deepseek, kimi, kimicn',
             `DEFAULT_PROVIDER=${env.DEFAULT_PROVIDER || 'gemini'}`,
             '',
             '# Server Configuration',
@@ -152,7 +154,9 @@ class ConfigManager {
             'GEMINI_API_KEY': 'Google Gemini',
             'OPENAI_API_KEY': 'OpenAI GPT',
             'ANTHROPIC_API_KEY': 'Anthropic Claude',
-            'DEEPSEEK_API_KEY': 'DeepSeek'
+            'DEEPSEEK_API_KEY': 'DeepSeek',
+            'KIMI_API_KEY': 'Kimi AI Global (Moonshot)',
+            'KIMICN_API_KEY': 'Kimi AI China (Moonshot CN)'
         };
 
         for (const [key, name] of Object.entries(providers)) {
@@ -184,7 +188,9 @@ class ConfigManager {
             'GEMINI_API_KEY': 'Google Gemini',
             'OPENAI_API_KEY': 'OpenAI GPT',
             'ANTHROPIC_API_KEY': 'Anthropic Claude',
-            'DEEPSEEK_API_KEY': 'DeepSeek'
+            'DEEPSEEK_API_KEY': 'DeepSeek',
+            'KIMI_API_KEY': 'Kimi AI Global (Moonshot)',
+            'KIMICN_API_KEY': 'Kimi AI China (Moonshot CN)'
         };
         
         for (const [envKey, name] of Object.entries(providers)) {
@@ -229,14 +235,18 @@ class ConfigManager {
             'GEMINI_API_KEY': 'gemini',
             'OPENAI_API_KEY': 'openai',
             'ANTHROPIC_API_KEY': 'anthropic',
-            'DEEPSEEK_API_KEY': 'deepseek'
+            'DEEPSEEK_API_KEY': 'deepseek',
+            'KIMI_API_KEY': 'kimi',
+            'KIMICN_API_KEY': 'kimicn'
         };
         
         const providerNames = {
             'gemini': 'Google Gemini',
             'openai': 'OpenAI GPT',
             'anthropic': 'Anthropic Claude',
-            'deepseek': 'DeepSeek'
+            'deepseek': 'DeepSeek',
+            'kimi': 'Kimi AI Global (Moonshot)',
+            'kimicn': 'Kimi AI China (Moonshot CN)'
         };
         
         for (const [envKey, providerKey] of Object.entries(providerMap)) {
@@ -296,6 +306,8 @@ class ConfigManager {
   • OpenAI GPT - Get API key: https://platform.openai.com/api-keys
   • Anthropic Claude - Get API key: https://console.anthropic.com/
   • DeepSeek - Get API key: https://platform.deepseek.com/
+  • Kimi AI Global - Get API key: https://platform.moonshot.ai/
+  • Kimi AI China - Get API key: https://platform.moonshot.cn/
 
 🔧 Configuration:
   • API keys are stored in .env file in your project root

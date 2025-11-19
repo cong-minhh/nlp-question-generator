@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const path = require('path');
+const { apiReference } = require('@scalar/express-api-reference');
 const apiRoutes = require('./routes/api');
 const { ensureUploadsDirectory } = require('./utils/fileUtils');
 const ProviderManager = require('./providers/providerManager');
@@ -22,6 +23,24 @@ app.locals.providerManager = providerManager;
 
 // API Routes
 app.use('/api', apiRoutes);
+
+// Scalar API Documentation
+app.use(
+    '/docs',
+    apiReference({
+        spec: {
+            url: '/openapi.json',
+        },
+        theme: 'purple',
+        layout: 'modern',
+        darkMode: true,
+    })
+);
+
+// Serve OpenAPI spec
+app.get('/openapi.json', (req, res) => {
+    res.sendFile(path.join(__dirname, 'openapi.json'));
+});
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -75,14 +94,14 @@ async function initializeServer() {
         });
         
         // Show API endpoints
-        cliUI.showSection('API Endpoints');
-        cliUI.showEndpoint('GET', `http://localhost:${PORT}/api`, 'Main API endpoint');
-        cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/health`, 'Health check');
-        cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/providers`, 'List all providers');
-        cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/current-provider`, 'Current provider info');
-        cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate`, 'Generate questions from text');
-        cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate-from-files`, 'Generate from uploaded files');
-        cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/switch-provider`, 'Switch between AI providers');
+        // cliUI.showSection('API Endpoints');
+        // cliUI.showEndpoint('GET', `http://localhost:${PORT}/api`, 'Main API endpoint');
+        // cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/health`, 'Health check');
+        // cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/providers`, 'List all providers');
+        // cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/current-provider`, 'Current provider info');
+        // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate`, 'Generate questions from text');
+        // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate-from-files`, 'Generate from uploaded files');
+        // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/switch-provider`, 'Switch between AI providers');
         
         // Show supported file formats
         cliUI.showSection('Supported File Formats');
@@ -92,6 +111,7 @@ async function initializeServer() {
         app.listen(PORT, () => {
             console.log(`\n${cliUI.colors.green}Server is ready!${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.cyan}NLP Question Generator running on port ${PORT}${cliUI.colors.reset}`);
+            console.log(`\n${cliUI.colors.yellow}📚 API Documentation: ${cliUI.colors.cyan}http://localhost:${PORT}/docs${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run setup' for first-time configuration${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run config' for API key configuration${cliUI.colors.reset}`);
             cliUI.showSystemInfo();
@@ -126,7 +146,7 @@ async function checkSetupNeeded() {
     let hasApiKeys = false;
     try {
         const envContent = fs.readFileSync(envFile, 'utf8');
-        const apiKeys = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DEEPSEEK_API_KEY'];
+        const apiKeys = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DEEPSEEK_API_KEY', 'KIMI_API_KEY', 'KIMICN_API_KEY'];
         
         hasApiKeys = apiKeys.some(key => {
             // Match pattern: KEY=value (where value is not empty and not just whitespace)

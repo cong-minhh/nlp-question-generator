@@ -5,6 +5,8 @@ const GeminiProvider = require('./geminiProvider');
 const OpenAIProvider = require('./openaiProvider');
 const AnthropicProvider = require('./anthropicProvider');
 const DeepSeekProvider = require('./deepseekProvider');
+const KimiProvider = require('./kimiProvider');
+const KimiCnProvider = require('./kimiCnProvider');
 
 /**
  * AI Provider Manager - Handles multiple AI providers
@@ -103,6 +105,34 @@ class ProviderManager {
         } catch (error) {
             console.warn('⚠ DeepSeek provider failed to load:', error.message);
         }
+
+        // Load Kimi Global Provider
+        try {
+            const kimiConfig = {
+                apiKey: process.env.KIMI_API_KEY,
+                ...(config.kimi || {})
+            };
+            const kimiProvider = new KimiProvider(kimiConfig);
+            await kimiProvider.initialize(kimiConfig);
+            this.providers.set('kimi', kimiProvider);
+            console.log('✓ Kimi Global provider loaded');
+        } catch (error) {
+            console.warn('⚠ Kimi Global provider failed to load:', error.message);
+        }
+
+        // Load Kimi CN Provider
+        try {
+            const kimiCnConfig = {
+                apiKey: process.env.KIMICN_API_KEY,
+                ...(config.kimicn || {})
+            };
+            const kimiCnProvider = new KimiCnProvider(kimiCnConfig);
+            await kimiCnProvider.initialize(kimiCnConfig);
+            this.providers.set('kimicn', kimiCnProvider);
+            console.log('✓ Kimi CN provider loaded');
+        } catch (error) {
+            console.warn('⚠ Kimi CN provider failed to load:', error.message);
+        }
     }
 
     /**
@@ -162,7 +192,7 @@ class ProviderManager {
         }
 
         // Add unavailable providers
-        const allProviderNames = ['gemini', 'openai', 'anthropic', 'deepseek'];
+        const allProviderNames = ['gemini', 'openai', 'anthropic', 'deepseek', 'kimi', 'kimicn'];
         for (const name of allProviderNames) {
             if (!providers.find(p => p.name === name)) {
                 providers.push({

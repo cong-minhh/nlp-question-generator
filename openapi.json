@@ -1,0 +1,378 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "NLP Question Generator API",
+    "version": "2.0.0",
+    "description": "Multi-provider AI-powered API for generating multiple-choice quiz questions from text or files",
+    "contact": {
+      "name": "API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Generation",
+      "description": "Question generation endpoints"
+    },
+    {
+      "name": "Providers",
+      "description": "AI provider management"
+    },
+    {
+      "name": "System",
+      "description": "System health and information"
+    }
+  ],
+  "paths": {
+    "/api/generate": {
+      "post": {
+        "tags": ["Generation"],
+        "summary": "Generate questions from text",
+        "description": "Generate multiple-choice quiz questions from provided text using the current AI provider",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "The text to generate questions from",
+                    "minLength": 50,
+                    "maxLength": 50000,
+                    "example": "Python is a high-level programming language known for its simplicity and readability."
+                  },
+                  "numQuestions": {
+                    "type": "integer",
+                    "description": "Number of questions to generate",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 10,
+                    "example": 5
+                  },
+                  "num_questions": {
+                    "type": "integer",
+                    "description": "Alternative parameter name (underscore format)",
+                    "minimum": 1,
+                    "maximum": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Questions generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid input"
+          },
+          "500": {
+            "description": "Server error - generation failed"
+          }
+        }
+      }
+    },
+    "/api/generate-from-files": {
+      "post": {
+        "tags": ["Generation"],
+        "summary": "Generate questions from files",
+        "description": "Upload files (PDF, DOC, DOCX, PPT, PPTX, TXT) and generate questions from extracted text",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["files"],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "One or more files to process (max 10 files, 50MB each)",
+                    "maxItems": 10
+                  },
+                  "numQuestions": {
+                    "type": "integer",
+                    "description": "Number of questions to generate",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Questions generated successfully from files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileQuestionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "tags": ["Providers"],
+        "summary": "List all AI providers",
+        "description": "Get a list of all available AI providers and their configuration status",
+        "responses": {
+          "200": {
+            "description": "List of providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/current-provider": {
+      "get": {
+        "tags": ["Providers"],
+        "summary": "Get current provider",
+        "description": "Get information about the currently active AI provider",
+        "responses": {
+          "200": {
+            "description": "Current provider information"
+          }
+        }
+      }
+    },
+    "/api/switch-provider": {
+      "post": {
+        "tags": ["Providers"],
+        "summary": "Switch AI provider",
+        "description": "Switch to a different AI provider",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["provider"],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": ["gemini", "openai", "anthropic", "deepseek", "kimi", "kimicn"],
+                    "description": "Provider name to switch to",
+                    "example": "gemini"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Provider switched successfully"
+          },
+          "400": {
+            "description": "Invalid provider or provider not configured"
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health check",
+        "description": "Check if the service is running and healthy",
+        "responses": {
+          "200": {
+            "description": "Service is healthy"
+          }
+        }
+      }
+    },
+    "/api": {
+      "get": {
+        "tags": ["System"],
+        "summary": "API documentation",
+        "description": "Get API documentation and available endpoints",
+        "responses": {
+          "200": {
+            "description": "API documentation"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Question": {
+        "type": "object",
+        "properties": {
+          "questiontext": {
+            "type": "string",
+            "description": "The question text"
+          },
+          "optiona": {
+            "type": "string",
+            "description": "Option A"
+          },
+          "optionb": {
+            "type": "string",
+            "description": "Option B"
+          },
+          "optionc": {
+            "type": "string",
+            "description": "Option C"
+          },
+          "optiond": {
+            "type": "string",
+            "description": "Option D"
+          },
+          "correctanswer": {
+            "type": "string",
+            "enum": ["A", "B", "C", "D"],
+            "description": "The correct answer"
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": ["easy", "medium", "hard"],
+            "description": "Question difficulty level"
+          }
+        }
+      },
+      "QuestionResponse": {
+        "type": "object",
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            }
+          },
+          "provider": {
+            "type": "string",
+            "description": "AI provider used"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "num_questions": {
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "FileQuestionResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/QuestionResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "filesProcessed": {
+                    "type": "integer"
+                  },
+                  "filesWithText": {
+                    "type": "integer"
+                  },
+                  "totalTextLength": {
+                    "type": "integer"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "textLength": {
+                          "type": "integer"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ProvidersResponse": {
+        "type": "object",
+        "properties": {
+          "currentProvider": {
+            "type": "string"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "configured": {
+                  "type": "boolean"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "isCurrent": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
