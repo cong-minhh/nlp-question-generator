@@ -79,7 +79,7 @@ async function initializeServer() {
 
         // Display startup banner
         cliUI.printGardenBanner();
-        cliUI.showSection('Initializing Multi-Provider AI System');
+        // cliUI.showSection('Initializing Multi-Provider AI System');
         
         await cliUI.showSpinner('Loading AI providers...', 1500);
         await providerManager.initialize();
@@ -104,8 +104,8 @@ async function initializeServer() {
         // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/switch-provider`, 'Switch between AI providers');
         
         // Show supported file formats
-        cliUI.showSection('Supported File Formats');
-        console.log('   PDF, DOC, DOCX, PPT, PPTX, TXT');
+        // cliUI.showSection('Supported File Formats');
+        // console.log('   PDF, DOC, DOCX, PPT, PPTX, TXT');
         
         // Start server
         app.listen(PORT, () => {
@@ -117,13 +117,13 @@ async function initializeServer() {
             const hasApiKey = process.env.SERVER_API_KEY && process.env.SERVER_API_KEY.trim() !== '';
             
             if (apiMode === 'private' && hasApiKey) {
-                console.log(`\n${cliUI.colors.green}🔒 Security: PRIVATE MODE (API key required)${cliUI.colors.reset}`);
+                console.log(`\n${cliUI.colors.green}Security: PRIVATE MODE (API key required)${cliUI.colors.reset}`);
             } else if (apiMode === 'private' && !hasApiKey) {
-                console.log(`\n${cliUI.colors.yellow}⚠️  Security: PRIVATE MODE but no API key set!${cliUI.colors.reset}`);
+                console.log(`\n${cliUI.colors.yellow}Security: PRIVATE MODE but no API key set!${cliUI.colors.reset}`);
                 console.log(`${cliUI.colors.gray}   Run 'npm run generate-key' to create an API key${cliUI.colors.reset}`);
             } else {
-                console.log(`\n${cliUI.colors.yellow}🌐 Security: PUBLIC MODE (no authentication)${cliUI.colors.reset}`);
-                console.log(`${cliUI.colors.gray}   Set API_MODE=private in .env for production${cliUI.colors.reset}`);
+                console.log(`\n${cliUI.colors.yellow}Security: PUBLIC MODE (no authentication)${cliUI.colors.reset}`);
+                console.log(`${cliUI.colors.gray}Set API_MODE=private in .env for production${cliUI.colors.reset}`);
             }
             
             console.log(`\n${cliUI.colors.yellow}API Documentation: ${cliUI.colors.cyan}http://localhost:${PORT}/docs${cliUI.colors.reset}`);
