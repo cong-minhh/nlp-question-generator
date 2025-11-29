@@ -105,7 +105,8 @@ class BaseAIProvider {
                 optionc: q.optionc || q.optionC || q.C || q.options?.C || '',
                 optiond: q.optiond || q.optionD || q.D || q.options?.D || '',
                 correctanswer: (q.correctanswer || q.correct_answer || q.answer || q.A).toString().toUpperCase(),
-                difficulty: (q.difficulty || q.level || 'medium').toLowerCase()
+                difficulty: (q.difficulty || q.level || 'medium').toLowerCase(),
+                rationale: q.rationale || q.explanation || ''
             };
 
             // Validate required fields
@@ -146,7 +147,9 @@ class BaseAIProvider {
      * @returns {string} - Formatted prompt
      */
     buildPrompt(text, numQuestions = 10) {
-        return `You are an expert educator creating multiple choice quiz questions. 
+        return `You are an Expert Instructional Designer creating high-quality multiple choice questions.
+
+Your goal is to test "Deep Understanding" and application of concepts, NOT just simple recall of facts.
 
 Based on the following text, generate exactly ${numQuestions} multiple choice questions.
 
@@ -154,24 +157,43 @@ TEXT:
 ${text}
 
 REQUIREMENTS:
-- Generate exactly ${numQuestions} questions
-- Each question must have 4 options (A, B, C, D)
-- Mark the correct answer as A, B, C, or D
-- Assign difficulty level as "easy", "medium", or "hard"
-- Questions should test understanding, not just recall
-- Options should be plausible and well-distributed
+1. **Deep Understanding**: Questions must require analysis, synthesis, or application of the content. Avoid "What is X?" style questions if possible. Use scenarios or "Which of the following best demonstrates..."
+2. **Distractor Engineering**: Wrong answers (distractors) must be PLAUSIBLE misconceptions or common errors. Do NOT use random unrelated facts. A student with partial knowledge should be tempted by the distractors.
+3. **Rationale**: You must provide a "rationale" explaining why the correct answer is correct and why the others are wrong.
 
-Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, just raw JSON):
+FEW-SHOT EXAMPLES:
+
+[BAD - RECALL ONLY]
+Question: What is the capital of France?
+A) London
+B) Berlin
+C) Paris
+D) Madrid
+Correct: C
+Rationale: Paris is the capital. (Too simple, just fact retrieval)
+
+[GOOD - SCENARIO & APPLICATION]
+Question: A user is complaining that their laptop battery drains too quickly even when in "Sleep" mode. Based on the power management principles described in the text, which setting is most likely misconfigured?
+A) The screen brightness is set to maximum. (Unlikely to affect Sleep mode)
+B) "Hybrid Sleep" is disabled, causing the RAM to stay fully powered. (Plausible mechanism for power drain)
+C) The hard drive is full. (Irrelevant to power consumption)
+D) The keyboard backlight is off. (Would save power, not drain it)
+Correct: B
+Rationale: Sleep mode keeps RAM powered to maintain state. Hybrid sleep saves state to disk allowing lower power states. If disabled, standard sleep might consume more power or wake events might be mishandled. Option A is irrelevant in sleep. Option C is unrelated.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON object with this exact structure:
 {
   "questions": [
     {
-      "questiontext": "What is...?",
-      "optiona": "First option",
-      "optionb": "Second option",
-      "optionc": "Third option",
-      "optiond": "Fourth option",
-      "correctanswer": "A",
-      "difficulty": "medium"
+      "questiontext": "Scenario or deep question text...",
+      "optiona": "Plausible distractor A",
+      "optionb": "Plausible distractor B",
+      "optionc": "Correct answer C",
+      "optiond": "Plausible distractor D",
+      "correctanswer": "C",
+      "difficulty": "hard",
+      "rationale": "Explanation of the logic..."
     }
   ]
 }`;
