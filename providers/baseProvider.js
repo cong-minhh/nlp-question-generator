@@ -79,7 +79,7 @@ class BaseAIProvider {
     }
 
     /**
-     * Robust JSON Parser - Handles markdown blocks and malformed responses
+     * Robust JSON Parser - Handles markdown blocks, control characters, and malformed responses
      * @param {string} rawResponse - Raw string response from AI
      * @returns {Object} - Parsed JSON object
      * @throws {Error} - Clear error message if parsing fails
@@ -104,19 +104,129 @@ class BaseAIProvider {
             throw new Error('Invalid JSON structure: No valid JSON object found in response');
         }
 
-        const jsonString = cleaned.substring(firstBrace, lastBrace + 1);
+        let jsonString = cleaned.substring(firstBrace, lastBrace + 1);
 
-        // Step 3: Attempt to parse
+        // Step 3: Comprehensive cleaning for large responses
+        // This handles control characters, unescaped quotes, and malformed strings
+        jsonString = this.cleanJSONString(jsonString);
+        
+        // Step 4: Attempt to parse
         try {
             const parsed = JSON.parse(jsonString);
             return parsed;
         } catch (parseError) {
-            // Provide detailed error for debugging
-            throw new Error(
-                `JSON Parse Error: ${parseError.message}\n` +
-                `First 200 chars of extracted JSON: ${jsonString.substring(0, 200)}...`
-            );
+            // Step 5: Last resort - try to fix common JSON errors
+            try {
+                const fixed = this.fixCommonJSONErrors(jsonString);
+                const parsed = JSON.parse(fixed);
+                console.warn('⚠ JSON required error correction - AI response had formatting issues');
+                return parsed;
+            } catch (secondError) {
+                // Provide detailed error for debugging
+                const errorPosition = parseError.message.match(/position (\d+)/);
+                const pos = errorPosition ? parseInt(errorPosition[1]) : 0;
+                const contextStart = Math.max(0, pos - 100);
+                const contextEnd = Math.min(jsonString.length, pos + 100);
+                const context = jsonString.substring(contextStart, contextEnd);
+                
+                throw new Error(
+                    `JSON Parse Error: ${parseError.message}\n` +
+                    `Context around error: ...${context}...`
+                );
+            }
         }
+    }
+
+    /**
+     * Clean JSON string by handling control characters and escape sequences
+     * @param {string} jsonString - Raw JSON string
+     * @returns {string} - Cleaned JSON string
+     */
+    cleanJSONString(jsonString) {
+        let result = '';
+        let inString = false;
+        let escapeNext = false;
+        
+        for (let i = 0; i < jsonString.length; i++) {
+            const char = jsonString[i];
+            const charCode = char.charCodeAt(0);
+            
+            // Handle escape sequences
+            if (escapeNext) {
+                result += char;
+                escapeNext = false;
+                continue;
+            }
+            
+            if (char === '\\') {
+                result += char;
+                escapeNext = true;
+                continue;
+            }
+            
+            // Track if we're inside a string
+            if (char === '"') {
+                inString = !inString;
+                result += char;
+                continue;
+            }
+            
+            // If we're inside a string, handle control characters
+            if (inString) {
+                // Control characters (0x00-0x1F) need to be escaped or removed
+                if (charCode < 0x20) {
+                    switch (char) {
+                        case '\n':
+                            result += '\\n';
+                            break;
+                        case '\r':
+                            result += '\\r';
+                            break;
+                        case '\t':
+                            result += '\\t';
+                            break;
+                        case '\b':
+                            result += '\\b';
+                            break;
+                        case '\f':
+                            result += '\\f';
+                            break;
+                        default:
+                            // Remove other control characters
+                            break;
+                    }
+                } else {
+                    result += char;
+                }
+            } else {
+                // Outside strings, keep everything except problematic control chars
+                if (charCode >= 0x20 || char === '\n' || char === '\r' || char === '\t' || char === ' ') {
+                    result += char;
+                }
+            }
+        }
+        
+        return result;
+    }
+
+    /**
+     * Fix common JSON errors like trailing commas, unescaped quotes, etc.
+     * @param {string} jsonString - Malformed JSON string
+     * @returns {string} - Fixed JSON string
+     */
+    fixCommonJSONErrors(jsonString) {
+        let fixed = jsonString;
+        
+        // Remove trailing commas before closing braces/brackets
+        fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
+        
+        // Fix missing commas between properties (common AI error)
+        fixed = fixed.replace(/"\s*\n\s*"/g, '",\n"');
+        
+        // Remove any remaining control characters
+        fixed = fixed.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, '');
+        
+        return fixed;
     }
 
     /**

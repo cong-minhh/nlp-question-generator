@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Test - NLP Question Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .input-section {
+            margin-bottom: 30px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-section {
+            margin: 30px 0;
+            display: none;
+        }
+
+        .progress-section.active {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .questions-section {
+            margin-top: 30px;
+        }
+
+        .question-card {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .question-number {
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .difficulty {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .difficulty.easy { background: #d4edda; color: #155724; }
+        .difficulty.medium { background: #fff3cd; color: #856404; }
+        .difficulty.hard { background: #f8d7da; color: #721c24; }
+
+        .question-text {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .options {
+            display: grid;
+            gap: 10px;
+        }
+
+        .option {
+            padding: 12px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+        }
+
+        .option.correct {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+
+        .option-label {
+            font-weight: 600;
+            margin-right: 10px;
+            color: #667eea;
+        }
+
+        .metadata {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .metadata h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .metadata-item {
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+        }
+
+        .metadata-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .metadata-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Real-Time Question Streaming</h1>
+            <p>Watch questions appear as they're generated!</p>
+        </div>
+
+        <div class="content">
+            <div class="input-section">
+                <label for="text">Enter your text:</label>
+                <textarea id="text" placeholder="Paste your text here...">Machine learning is a subset of artificial intelligence that focuses on the development of algorithms and statistical models that enable computers to improve their performance on a specific task through experience.</textarea>
+
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="numQuestions">Number of Questions:</label>
+                        <input type="number" id="numQuestions" value="5" min="1" max="30">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="difficulty">Difficulty:</label>
+                        <select id="difficulty">
+                            <option value="mixed">Mixed</option>
+                            <option value="easy">Easy</option>
+                            <option value="medium">Medium</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="bloomLevel">Bloom's Level:</label>
+                        <select id="bloomLevel">
+                            <option value="apply">Apply</option>
+                            <option value="remember">Remember</option>
+                            <option value="understand">Understand</option>
+                            <option value="analyze">Analyze</option>
+                            <option value="evaluate">Evaluate</option>
+                            <option value="create">Create</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group" style="display: flex; align-items: flex-end;">
+                        <button id="generateBtn" onclick="startStreaming()">🚀 Start Streaming</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="progress-section" id="progressSection">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+                <div class="status" id="status">Initializing...</div>
+            </div>
+
+            <div class="questions-section" id="questionsSection"></div>
+
+            <div class="metadata" id="metadata" style="display: none;">
+                <h3>📊 Generation Metadata</h3>
+                <div class="metadata-grid" id="metadataGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+
+        function startStreaming() {
+            const text = document.getElementById('text').value.trim();
+            const numQuestions = parseInt(document.getElementById('numQuestions').value);
+            const difficulty = document.getElementById('difficulty').value;
+            const bloomLevel = document.getElementById('bloomLevel').value;
+
+            if (!text) {
+                alert('Please enter some text');
+                return;
+            }
+
+            // Reset UI
+            document.getElementById('questionsSection').innerHTML = '';
+            document.getElementById('metadata').style.display = 'none';
+            document.getElementById('progressSection').classList.add('active');
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressFill').textContent = '0%';
+
+            // Close existing connection
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            // Create EventSource for streaming
+            const url = '/api/stream/generate';
+            
+            // Use fetch to POST data, then stream response
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text,
+                    numQuestions,
+                    difficulty,
+                    bloomLevel
+                })
+            }).then(response => {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            document.getElementById('generateBtn').disabled = false;
+                            return;
+                        }
+
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split('\n');
+
+                        lines.forEach(line => {
+                            if (line.startsWith('event:')) {
+                                const event = line.substring(7).trim();
+                                return;
+                            }
+
+                            if (line.startsWith('data:')) {
+                                try {
+                                    const data = JSON.parse(line.substring(6));
+                                    handleStreamEvent(data);
+                                } catch (e) {
+                                    console.error('Parse error:', e);
+                                }
+                            }
+                        });
+
+                        readStream();
+                    });
+                }
+
+                readStream();
+            }).catch(error => {
+                console.error('Stream error:', error);
+                document.getElementById('status').textContent = 'Error: ' + error.message;
+                document.getElementById('generateBtn').disabled = false;
+            });
+        }
+
+        function handleStreamEvent(data) {
+            if (data.question) {
+                addQuestion(data.question, data.index, data.total);
+                updateProgress(data.progress, `Question ${data.index}/${data.total}`);
+            } else if (data.message) {
+                updateProgress(data.progress || 0, data.message);
+            } else if (data.error) {
+                document.getElementById('status').textContent = '❌ Error: ' + data.error;
+                document.getElementById('status').style.background = '#f8d7da';
+                document.getElementById('status').style.color = '#721c24';
+            } else if (data.timestamp && !data.message) {
+                // Complete event
+                updateProgress(100, '✅ Generation complete!');
+                document.getElementById('status').style.background = '#d4edda';
+                document.getElementById('status').style.color = '#155724';
+                document.getElementById('generateBtn').disabled = false;
+                
+                if (data.cached) {
+                    document.getElementById('status').textContent += ' (from cache)';
+                }
+            } else if (data.generated_at) {
+                // Metadata event
+                showMetadata(data);
+            }
+        }
+
+        function updateProgress(percent, message) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').textContent = percent + '%';
+            document.getElementById('status').textContent = message;
+        }
+
+        function addQuestion(question, index, total) {
+            const container = document.getElementById('questionsSection');
+            
+            const card = document.createElement('div');
+            card.className = 'question-card';
+            
+            card.innerHTML = `
+                <div class="question-header">
+                    <span class="question-number">Question ${index}</span>
+                    <span class="difficulty ${question.difficulty}">${question.difficulty.toUpperCase()}</span>
+                </div>
+                <div class="question-text">${question.questiontext}</div>
+                <div class="options">
+                    <div class="option ${question.correctanswer === 'A' ? 'correct' : ''}">
+                        <span class="option-label">A)</span> ${question.optiona}
+                    </div>
+                    <div class="option ${question.correctanswer === 'B' ? 'correct' : ''}">
+                        <span class="option-label">B)</span> ${question.optionb}
+                    </div>
+                    <div class="option ${question.correctanswer === 'C' ? 'correct' : ''}">
+                        <span class="option-label">C)</span> ${question.optionc}
+                    </div>
+                    <div class="option ${question.correctanswer === 'D' ? 'correct' : ''}">
+                        <span class="option-label">D)</span> ${question.optiond}
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(card);
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function showMetadata(metadata) {
+            const metadataDiv = document.getElementById('metadata');
+            const grid = document.getElementById('metadataGrid');
+            
+            grid.innerHTML = `
+                <div class="metadata-item">
+                    <div class="metadata-label">Provider</div>
+                    <div class="metadata-value">${metadata.source || 'N/A'}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Questions Generated</div>
+                    <div class="metadata-value">${metadata.num_questions || 0}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Model</div>
+                    <div class="metadata-value">${metadata.model || 'N/A'}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Generated At</div>
+                    <div class="metadata-value">${new Date(metadata.generated_at).toLocaleTimeString()}</div>
+                </div>
+            `;
+            
+            metadataDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

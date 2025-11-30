@@ -1,17 +1,30 @@
 const ProviderManager = require('../providers/providerManager');
+const CacheManager = require('../utils/cache');
+const ParallelProcessor = require('../utils/parallelProcessor');
 
 /**
  * Multi-Provider Question Generation Service
- * Supports multiple AI providers through a unified interface
+ * Supports multiple AI providers with caching and parallel processing
  */
 class MultiProviderQuestionGenerator {
     constructor(config = {}) {
         this.providerManager = new ProviderManager(config);
+        this.cacheManager = new CacheManager({
+            enabled: process.env.CACHE_ENABLED !== 'false',
+            ttlDays: parseInt(process.env.CACHE_TTL_DAYS) || 30,
+            maxEntries: parseInt(process.env.CACHE_MAX_ENTRIES) || 1000
+        });
+        this.parallelProcessor = new ParallelProcessor({
+            enabled: process.env.PARALLEL_ENABLED !== 'false',
+            chunkSize: parseInt(process.env.PARALLEL_CHUNK_SIZE) || 10,
+            maxWorkers: parseInt(process.env.PARALLEL_MAX_WORKERS) || 5,
+            threshold: 20
+        });
         this.initialized = false;
     }
 
     /**
-     * Initialize the provider manager
+     * Initialize the provider manager and cache
      */
     async initialize(config = {}) {
         if (this.initialized) {
@@ -20,6 +33,7 @@ class MultiProviderQuestionGenerator {
 
         try {
             await this.providerManager.initialize(config);
+            await this.cacheManager.initialize();
             this.initialized = true;
             console.log('✓ Multi-provider question generator initialized');
         } catch (error) {
@@ -28,7 +42,7 @@ class MultiProviderQuestionGenerator {
     }
 
     /**
-     * Generate questions using current provider
+     * Generate questions using current provider with caching and parallel processing
      * @param {string} text - Input text
      * @param {Object} options - Generation options
      * @returns {Promise<Object>} - Generated questions
@@ -38,13 +52,97 @@ class MultiProviderQuestionGenerator {
             await this.initialize();
         }
 
+        const numQuestions = options.numQuestions || 10;
+        const useParallel = options.parallel !== false && this.parallelProcessor.shouldUseParallel(numQuestions);
+
+        // Add provider to cache key
+        const currentProvider = this.providerManager.getCurrentProvider();
+        const cacheOptions = {
+            ...options,
+            provider: currentProvider?.name || 'unknown'
+        };
+
+        // Check cache first (unless explicitly disabled)
+        if (options.noCache !== true && !useParallel) {
+            try {
+                const cached = await this.cacheManager.get(text, cacheOptions);
+                if (cached) {
+                    console.log(`✓ Cache hit (age: ${cached.cacheAge}min, uses: ${cached.accessCount})`);
+                    return cached;
+                }
+            } catch (cacheError) {
+                console.warn('Cache read error:', cacheError.message);
+                // Continue to generation if cache fails
+            }
+        }
+
+        // Use parallel processing for large batches
+        if (useParallel) {
+            try {
+                const result = await this.parallelProcessor.generateParallel(
+                    text,
+                    numQuestions,
+                    async (txt, opts) => {
+                        return await this.providerManager.generateQuestions(txt, opts);
+                    },
+                    options
+                );
+                
+                return result;
+            } catch (error) {
+                console.error('Parallel generation failed:', error.message);
+                throw error;
+            }
+        }
+
+        // Regular generation for small batches
         try {
             const result = await this.providerManager.generateQuestions(text, options);
+            
+            // Store in cache (fire and forget)
+            if (options.noCache !== true) {
+                this.cacheManager.set(text, cacheOptions, result).catch(err => {
+                    console.warn('Cache write error:', err.message);
+                });
+            }
+            
             return result;
         } catch (error) {
             console.error('Question generation failed:', error.message);
             throw error;
         }
+    }
+
+    /**
+     * Generate questions with parallel processing and progress callback
+     * @param {string} text - Input text
+     * @param {Object} options - Generation options
+     * @param {Function} onProgress - Progress callback
+     * @returns {Promise<Object>}
+     */
+    async generateQuestionsWithProgress(text, options = {}, onProgress = null) {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+
+        const numQuestions = options.numQuestions || 10;
+        const useParallel = options.parallel !== false && this.parallelProcessor.shouldUseParallel(numQuestions);
+
+        if (!useParallel) {
+            // Regular generation without progress
+            return await this.generateQuestions(text, options);
+        }
+
+        // Parallel generation with progress
+        return await this.parallelProcessor.generateParallelWithProgress(
+            text,
+            numQuestions,
+            async (txt, opts) => {
+                return await this.providerManager.generateQuestions(txt, opts);
+            },
+            options,
+            onProgress
+        );
     }
 
     /**
@@ -234,6 +332,42 @@ class MultiProviderQuestionGenerator {
         }
 
         return results;
+    }
+
+    /**
+     * Clear cache
+     */
+    async clearCache() {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+        return await this.cacheManager.clear();
+    }
+
+    /**
+     * Get cache statistics
+     */
+    async getCacheStats() {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+        return await this.cacheManager.getStats();
+    }
+
+    /**
+     * Get parallel processor configuration
+     */
+    getParallelConfig() {
+        return this.parallelProcessor.getConfig();
+    }
+
+    /**
+     * Estimate time savings for parallel processing
+     * @param {number} numQuestions - Number of questions
+     * @returns {Object} - Time estimates
+     */
+    estimateParallelTimeSavings(numQuestions) {
+        return this.parallelProcessor.estimateTimeSavings(numQuestions);
     }
 }
 

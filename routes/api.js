@@ -269,4 +269,53 @@ router.get('/', (req, res) => {
     }));
 });
 
+// Cache routes
+const cacheRoutes = require('./cacheRoutes');
+router.use('/cache', cacheRoutes);
+
+/**
+ * GET /parallel/config
+ * Get parallel processing configuration
+ */
+router.get('/parallel/config', (req, res) => {
+    try {
+        const generator = questionGenerator;
+        const config = generator.getParallelConfig();
+        
+        res.json({
+            success: true,
+            config
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * GET /parallel/estimate
+ * Estimate time savings for parallel processing
+ * Query: ?numQuestions=30
+ */
+router.get('/parallel/estimate', (req, res) => {
+    try {
+        const numQuestions = parseInt(req.query.numQuestions) || 30;
+        const generator = questionGenerator;
+        const estimate = generator.estimateParallelTimeSavings(numQuestions);
+        
+        res.json({
+            success: true,
+            numQuestions,
+            estimate
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;

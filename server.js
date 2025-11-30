@@ -24,6 +24,13 @@ app.locals.providerManager = providerManager;
 // API Routes
 app.use('/api', apiRoutes);
 
+// Streaming Routes
+// const streamRoutes = require('./routes/streamRoutes');
+// app.use('/api/stream', streamRoutes);
+
+// Serve static files for streaming test page
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
 // Scalar API Documentation
 app.use(
     '/docs',
@@ -84,6 +91,13 @@ async function initializeServer() {
         await cliUI.showSpinner('Loading AI providers...', 1500);
         await providerManager.initialize();
         cliUI.showSuccess('Multi-Provider AI System initialized');
+        
+        // Initialize question generator with caching
+        const GeminiQuestionGenerator = require('./services/questionGenerator');
+        const questionGenerator = new GeminiQuestionGenerator();
+        await questionGenerator.initialize();
+        app.locals.questionGenerator = questionGenerator;
+        cliUI.showSuccess('Question generator with caching initialized');
         
         // Show available providers
         cliUI.showSection('Available AI Providers');
