@@ -59,7 +59,7 @@ class OpenAIProvider extends BaseAIProvider {
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`🔄 Falling back to OpenAI model: ${fallbackModel}`);
+        console.log(`Falling back to OpenAI model: ${fallbackModel}`);
         
         this.currentModel = fallbackModel;
         return true;

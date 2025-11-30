@@ -58,7 +58,7 @@ class DeepSeekProvider extends BaseAIProvider {
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`🔄 Falling back to DeepSeek model: ${fallbackModel}`);
+        console.log(`Falling back to DeepSeek model: ${fallbackModel}`);
         
         this.currentModel = fallbackModel;
         return true;

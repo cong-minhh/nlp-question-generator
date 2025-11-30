@@ -94,7 +94,7 @@ NODE_ENV=development
 
         const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
-        console.log('\n🔑 API Key Configuration');
+        console.log('\nAPI Key Configuration');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('You can skip this step and configure API keys later.\n');
 
@@ -156,7 +156,7 @@ NODE_ENV=development
         await this.createEnvFile();
         await this.createUploadsDir();
 
-        console.log('\n🔧 Configuration Setup Complete!\n');
+        console.log('\nConfiguration Setup Complete!\n');
         console.log('Next steps:');
         console.log('1. Add your API keys to the .env file');
         console.log('2. Run: npm start');
@@ -175,7 +175,7 @@ NODE_ENV=development
         }
 
         console.log('\n🎉 Setup complete! You can now run "npm start" to start the server.');
-        console.log('💡 Use "node cli/cli.js config" for interactive configuration.\n');
+        console.log('Use "node cli/cli.js config" for interactive configuration.\n');
     }
 }
 

@@ -6,6 +6,7 @@ const { apiReference } = require('@scalar/express-api-reference');
 const apiRoutes = require('./routes/api');
 const { ensureUploadsDirectory } = require('./utils/fileUtils');
 const ProviderManager = require('./providers/providerManager');
+const ErrorHandler = require('./utils/errorHandler');
 const cliUI = require('./cli/ascii');
 
 const app = express();
@@ -23,10 +24,6 @@ app.locals.providerManager = providerManager;
 
 // API Routes
 app.use('/api', apiRoutes);
-
-// Streaming Routes
-// const streamRoutes = require('./routes/streamRoutes');
-// app.use('/api/stream', streamRoutes);
 
 // Serve static files for streaming test page
 app.use('/public', express.static(path.join(__dirname, 'public')));
@@ -98,6 +95,42 @@ async function initializeServer() {
         await questionGenerator.initialize();
         app.locals.questionGenerator = questionGenerator;
         cliUI.showSuccess('Question generator with caching initialized');
+
+        // Initialize job store
+        const JobStore = require('./storage/jobStore');
+        const jobStore = new JobStore({
+            enabled: process.env.QUEUE_ENABLED !== 'false'
+        });
+        await jobStore.initialize();
+
+        // Initialize job queue with store
+        const JobQueue = require('./utils/jobQueue');
+        const jobQueue = new JobQueue({
+            enabled: process.env.QUEUE_ENABLED !== 'false',
+            maxConcurrent: parseInt(process.env.QUEUE_WORKERS) || 3,
+            jobStore: jobStore
+        });
+
+        // Initialize job processor
+        const JobProcessor = require('./utils/jobProcessor');
+        const jobProcessor = new JobProcessor(jobQueue, questionGenerator);
+        jobProcessor.start();
+
+        app.locals.jobQueue = jobQueue;
+        app.locals.jobStore = jobStore;
+        app.locals.jobProcessor = jobProcessor;
+        
+        if (jobQueue.enabled) {
+            cliUI.showSuccess(`Job queue initialized (${jobQueue.maxConcurrent} workers)`);
+        }
+
+        // Add job routes after initialization
+        // Streaming routes are disabled (commented out in routes/streamRoutes.js)
+        // const streamRoutes = require('./routes/streamRoutes');
+        // app.use('/api/stream', streamRoutes);
+        
+        const jobRoutes = require('./routes/jobRoutes');
+        app.use('/api/jobs', jobRoutes);
         
         // Show available providers
         cliUI.showSection('Available AI Providers');
@@ -120,6 +153,9 @@ async function initializeServer() {
         // Show supported file formats
         // cliUI.showSection('Supported File Formats');
         // console.log('   PDF, DOC, DOCX, PPT, PPTX, TXT');
+        
+        // Global error handler (must be last middleware)
+        app.use(ErrorHandler.expressErrorHandler);
         
         // Start server
         app.listen(PORT, () => {

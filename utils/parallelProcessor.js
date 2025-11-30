@@ -97,16 +97,16 @@ class ParallelProcessor {
             return await generateFn(text, { ...options, numQuestions: totalQuestions });
         }
 
-        console.log(`🔄 Using parallel generation for ${totalQuestions} questions`);
+        console.log(`Using parallel generation for ${totalQuestions} questions`);
         
         const chunks = this.calculateChunks(totalQuestions);
-        console.log(`📦 Split into ${chunks.length} chunks: [${chunks.join(', ')}]`);
+        console.log(`Split into ${chunks.length} chunks: [${chunks.join(', ')}]`);
 
         const startTime = Date.now();
 
         // Process chunks in parallel
         const results = await this.processInParallel(chunks, async (chunkSize, chunkIndex) => {
-            console.log(`⚙️  Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunkSize} questions)`);
+            console.log(`Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunkSize} questions)`);
             
             try {
                 const result = await generateFn(text, {

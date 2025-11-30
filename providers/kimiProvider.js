@@ -86,7 +86,7 @@ class KimiProvider extends BaseAIProvider {
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`🔄 Falling back to Kimi model: ${fallbackModel}`);
+        console.log(`Falling back to Kimi model: ${fallbackModel}`);
         
         this.currentModel = fallbackModel;
         return true;

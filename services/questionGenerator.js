@@ -1,10 +1,13 @@
 const ProviderManager = require('../providers/providerManager');
 const CacheManager = require('../utils/cache');
 const ParallelProcessor = require('../utils/parallelProcessor');
+const QualityScorer = require('../utils/qualityScorer');
+const Deduplicator = require('../utils/deduplicator');
+const DifficultyBalancer = require('../utils/difficultyBalancer');
 
 /**
  * Multi-Provider Question Generation Service
- * Supports multiple AI providers with caching and parallel processing
+ * Supports multiple AI providers with caching, parallel processing, quality scoring, deduplication, and difficulty balancing
  */
 class MultiProviderQuestionGenerator {
     constructor(config = {}) {
@@ -20,11 +23,23 @@ class MultiProviderQuestionGenerator {
             maxWorkers: parseInt(process.env.PARALLEL_MAX_WORKERS) || 5,
             threshold: 20
         });
+        this.qualityScorer = null; // Initialized later with provider
+        this.deduplicator = new Deduplicator({
+            enabled: process.env.DEDUP_ENABLED !== 'false',
+            threshold: parseInt(process.env.DEDUP_THRESHOLD) || 85,
+            compareOptions: process.env.DEDUP_COMPARE_OPTIONS !== 'false',
+            keepBest: process.env.DEDUP_KEEP_BEST !== 'false'
+        });
+        this.difficultyBalancer = new DifficultyBalancer({
+            enabled: process.env.DIFFICULTY_BALANCE_ENABLED !== 'false',
+            tolerance: parseFloat(process.env.DIFFICULTY_BALANCE_TOLERANCE) || 0.10,
+            maxRetries: parseInt(process.env.DIFFICULTY_BALANCE_MAX_RETRIES) || 2
+        });
         this.initialized = false;
     }
 
     /**
-     * Initialize the provider manager and cache
+     * Initialize the provider manager, cache, and quality scorer
      */
     async initialize(config = {}) {
         if (this.initialized) {
@@ -34,8 +49,31 @@ class MultiProviderQuestionGenerator {
         try {
             await this.providerManager.initialize(config);
             await this.cacheManager.initialize();
+            
+            // Initialize quality scorer with a provider (use cheapest/fastest)
+            const scorerProviderName = process.env.QUALITY_SCORER_PROVIDER || 'gemini';
+            let scorerProvider = null;
+            
+            if (this.providerManager.hasProvider(scorerProviderName)) {
+                scorerProvider = this.providerManager.getProvider(scorerProviderName);
+            } else {
+                // Fall back to current provider
+                scorerProvider = this.providerManager.getCurrentProvider();
+            }
+            
+            this.qualityScorer = new QualityScorer({
+                enabled: process.env.QUALITY_SCORING_ENABLED !== 'false',
+                minScore: parseInt(process.env.QUALITY_MIN_SCORE) || 6,
+                maxRetries: parseInt(process.env.QUALITY_MAX_RETRIES) || 2,
+                scorerProvider: scorerProvider,
+                useQuickScore: process.env.QUALITY_QUICK_SCORE === 'true'
+            });
+            
             this.initialized = true;
             console.log('✓ Multi-provider question generator initialized');
+            if (this.qualityScorer.enabled) {
+                console.log(`✓ Quality scoring enabled (min score: ${this.qualityScorer.minScore}, provider: ${scorerProviderName})`);
+            }
         } catch (error) {
             throw new Error(`Failed to initialize question generator: ${error.message}`);
         }
@@ -97,7 +135,111 @@ class MultiProviderQuestionGenerator {
 
         // Regular generation for small batches
         try {
-            const result = await this.providerManager.generateQuestions(text, options);
+            let result = await this.providerManager.generateQuestions(text, options);
+            
+            // Apply quality scoring if enabled and not disabled for this request
+            if (options.qualityCheck !== false && this.qualityScorer && this.qualityScorer.enabled) {
+                const scoringResult = await this.qualityScorer.scoreAndImprove(
+                    result.questions,
+                    async (count) => {
+                        // Regenerate function for low-quality questions
+                        const regenResult = await this.providerManager.generateQuestions(text, {
+                            ...options,
+                            numQuestions: count
+                        });
+                        return regenResult.questions;
+                    }
+                );
+                
+                // Update result with scored questions
+                result = {
+                    ...result,
+                    questions: scoringResult.questions,
+                    metadata: {
+                        ...result.metadata,
+                        qualityScoring: {
+                            enabled: true,
+                            allPassed: scoringResult.allPassed,
+                            rejected: scoringResult.rejected || 0,
+                            regenerated: scoringResult.regenerated || 0,
+                            attempts: scoringResult.attempts || 1,
+                            statistics: this.qualityScorer.getStatistics(scoringResult.scores)
+                        }
+                    }
+                };
+            }
+
+            // Apply deduplication if enabled and not disabled for this request
+            if (options.deduplicate !== false && this.deduplicator && this.deduplicator.enabled) {
+                const dedupResult = this.deduplicator.deduplicate(
+                    result.questions,
+                    result.metadata?.qualityScoring?.statistics ? result.questions.map((_, i) => ({ score: 7 })) : null
+                );
+
+                result = {
+                    ...result,
+                    questions: dedupResult.questions,
+                    metadata: {
+                        ...result.metadata,
+                        deduplication: {
+                            enabled: true,
+                            duplicatesFound: dedupResult.duplicatesFound,
+                            duplicatesRemoved: dedupResult.duplicatesRemoved,
+                            kept: dedupResult.kept,
+                            duplicateRate: dedupResult.duplicatesRemoved > 0 
+                                ? ((dedupResult.duplicatesRemoved / (dedupResult.kept + dedupResult.duplicatesRemoved)) * 100).toFixed(1) + '%'
+                                : '0%',
+                            groups: dedupResult.groups.length
+                        }
+                    }
+                };
+            }
+
+            // Apply difficulty balancing if enabled and difficulty is 'mixed'
+            const requestedDifficulty = options.difficulty || 'mixed';
+            if (options.balanceDifficulty !== false && 
+                this.difficultyBalancer && 
+                this.difficultyBalancer.enabled && 
+                requestedDifficulty === 'mixed') {
+                
+                const balanceResult = await this.difficultyBalancer.balance(
+                    result.questions,
+                    async (count, difficulty) => {
+                        // Regenerate function for specific difficulty
+                        const regenResult = await this.providerManager.generateQuestions(text, {
+                            ...options,
+                            numQuestions: count,
+                            difficulty: difficulty,
+                            qualityCheck: false, // Skip quality check for rebalancing
+                            deduplicate: false // Skip dedup for rebalancing
+                        });
+                        return regenResult.questions;
+                    }
+                );
+
+                result = {
+                    ...result,
+                    questions: balanceResult.questions,
+                    metadata: {
+                        ...result.metadata,
+                        difficultyBalancing: {
+                            enabled: true,
+                            balanced: balanceResult.balanced,
+                            attempts: balanceResult.attempts || 1,
+                            distribution: {
+                                easy: balanceResult.distribution.easy,
+                                medium: balanceResult.distribution.medium,
+                                hard: balanceResult.distribution.hard,
+                                percentages: {
+                                    easy: (balanceResult.distribution.percentages.easy * 100).toFixed(1) + '%',
+                                    medium: (balanceResult.distribution.percentages.medium * 100).toFixed(1) + '%',
+                                    hard: (balanceResult.distribution.percentages.hard * 100).toFixed(1) + '%'
+                                }
+                            }
+                        }
+                    }
+                };
+            }
             
             // Store in cache (fire and forget)
             if (options.noCache !== true) {
@@ -263,14 +405,14 @@ class MultiProviderQuestionGenerator {
         const textExtractor = new TextExtractor();
 
         try {
-            console.log('📄 Extracting text from files...');
+            console.log('Extracting text from files...');
             const extractedText = await textExtractor.processFiles(filePaths);
             
             if (!extractedText.trim()) {
                 throw new Error('No text could be extracted from the provided files');
             }
 
-            console.log(`📝 Extracted ${extractedText.length} characters of text`);
+            console.log(`Extracted ${extractedText.length} characters of text`);
             
             const validation = this.validateInput(extractedText);
             if (!validation.valid) {
@@ -368,6 +510,28 @@ class MultiProviderQuestionGenerator {
      */
     estimateParallelTimeSavings(numQuestions) {
         return this.parallelProcessor.estimateTimeSavings(numQuestions);
+    }
+
+    /**
+     * Get smart routing statistics
+     */
+    getRoutingStats() {
+        return this.providerManager.getRoutingStats();
+    }
+
+    /**
+     * Set routing strategy
+     * @param {string} strategy - Routing strategy
+     */
+    setRoutingStrategy(strategy) {
+        this.providerManager.setRoutingStrategy(strategy);
+    }
+
+    /**
+     * Reset routing statistics
+     */
+    resetRoutingStats() {
+        this.providerManager.resetRoutingStats();
     }
 }
 

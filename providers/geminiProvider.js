@@ -77,7 +77,7 @@ class GeminiProvider extends BaseAIProvider {
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`🔄 Falling back to model: ${fallbackModel}`);
+        console.log(`Falling back to model: ${fallbackModel}`);
         
         try {
             await this.initializeModel(fallbackModel);

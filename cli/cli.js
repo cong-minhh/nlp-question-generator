@@ -168,7 +168,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
      * Configuration command
      */
     async configCommand(args) {
-        console.log('🔧 Opening configuration...\n');
+        console.log('Opening configuration...\n');
         const configManager = new ConfigManager();
         await configManager.init();
     }
@@ -186,7 +186,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
         const text = args.join(' ');
         const options = this.parseOptions(args);
 
-        console.log('📝 Generating questions...\n');
+        console.log('Generating questions...\n');
         
         try {
             const result = await this.providerManager.generateQuestions(text, options);
@@ -210,7 +210,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
         const filePaths = args.filter(arg => !arg.startsWith('--'));
         const options = this.parseOptions(args);
 
-        console.log('📄 Processing files...\n');
+        console.log('Processing files...\n');
 
         // Validate files
         const validFiles = [];
@@ -237,8 +237,8 @@ For more information: https://github.com/your-repo/nlp-question-generator
                 process.exit(1);
             }
 
-            console.log(`📝 Extracted text length: ${extractedText.length} characters`);
-            console.log('🤖 Generating questions...\n');
+            console.log(`Extracted text length: ${extractedText.length} characters`);
+            console.log('Generating questions...\n');
 
             // Generate questions
             const result = await this.providerManager.generateQuestions(extractedText, options);
@@ -256,7 +256,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
     async testCommand(args) {
         const providerName = args[0];
         
-        console.log('🔍 Testing provider connections...\n');
+        console.log('Testing provider connections...\n');
 
         if (providerName) {
             // Test specific provider
@@ -285,7 +285,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
      * List providers command
      */
     async providersCommand(args) {
-        console.log('🏗️  Available AI Providers:\n');
+        console.log('Available AI Providers:\n');
         
         const providers = this.providerManager.listProviders();
         const status = this.providerManager.getStatus();
@@ -353,7 +353,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
      */
     displayResults(result) {
         if (result.questions && result.questions.length > 0) {
-            console.log(`✅ Generated ${result.questions.length} questions using ${result.metadata?.provider || 'unknown'} provider\n`);
+            console.log(`Generated ${result.questions.length} questions using ${result.metadata?.provider || 'unknown'} provider\n`);
             
             // Group questions by difficulty
             const grouped = {
@@ -364,7 +364,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
 
             for (const [difficulty, questions] of Object.entries(grouped)) {
                 if (questions.length > 0) {
-                    console.log(`📊 ${difficulty.toUpperCase()} (${questions.length} questions):`);
+                    console.log(`${difficulty.toUpperCase()} (${questions.length} questions):`);
                     console.log('─'.repeat(50));
                     
                     questions.forEach((question, index) => {
@@ -395,15 +395,15 @@ For more information: https://github.com/your-repo/nlp-question-generator
      */
     displayTestResult(result) {
         if (result.success) {
-            console.log(`✅ ${result.provider} test successful`);
-            console.log(`   Message: ${result.message}`);
-            console.log(`   Model: ${result.model}`);
-            console.log(`   Test: ${result.testResult}`);
+            console.log(`✓${result.provider} test successful`);
+            console.log(`Message: ${result.message}`);
+            console.log(`Model: ${result.model}`);
+            console.log(`Test: ${result.testResult}`);
         } else {
             console.log(`❌ ${result.provider} test failed`);
-            console.log(`   Message: ${result.message}`);
+            console.log(`Message: ${result.message}`);
             if (result.error) {
-                console.log(`   Error: ${result.error}`);
+                console.log(`Error: ${result.error}`);
             }
         }
     }
@@ -412,24 +412,24 @@ For more information: https://github.com/your-repo/nlp-question-generator
      * Display all test results
      */
     displayAllTestResults(results) {
-        console.log('🔍 Provider Test Results:\n');
+        console.log('Provider Test Results:\n');
         
         for (const [providerName, result] of Object.entries(results)) {
             const status = result.success ? '✅' : '❌';
             console.log(`${status} ${providerName}: ${result.message}`);
             
             if (result.success && result.testResult) {
-                console.log(`   Test: ${result.testResult}`);
+                console.log(`Test: ${result.testResult}`);
             }
         }
 
         const successful = Object.values(results).filter(r => r.success).length;
         const total = Object.keys(results).length;
         
-        console.log(`\n📊 Summary: ${successful}/${total} providers working`);
+        console.log(`\nSummary: ${successful}/${total} providers working`);
         
         if (successful === 0) {
-            console.log('\n💡 Tips:');
+            console.log('\nTips:');
             console.log('   • Configure API keys with: nlp-qg config');
             console.log('   • Set environment variables: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY');
         }

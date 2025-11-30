@@ -21,7 +21,7 @@ class CacheManager {
      */
     async initialize() {
         if (!this.enabled) {
-            console.log('ℹ Cache is disabled');
+            console.log('Cache is disabled');
             return;
         }
 
@@ -251,7 +251,7 @@ class CacheManager {
 
                 const deleteCount = row.count - this.maxEntries;
                 this.db.run(deleteQuery, [deleteCount], () => {
-                    console.log(`🗑️  Cleaned up ${deleteCount} old cache entries`);
+                    console.log(`Cleaned up ${deleteCount} old cache entries`);
                     resolve();
                 });
             });
