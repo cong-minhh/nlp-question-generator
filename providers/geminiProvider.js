@@ -127,10 +127,17 @@ class GeminiProvider extends BaseAIProvider {
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
+        
+        // Ensure difficulty is always set to 'mixed' by default
+        const promptOptions = {
+            numQuestions,
+            bloomLevel: options.bloomLevel || 'apply',
+            difficulty: options.difficulty || 'mixed'
+        };
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
-                const prompt = this.buildPrompt(text, numQuestions);
+                const prompt = this.buildPrompt(text, promptOptions);
 
                 const result = await this.model.generateContent(prompt);
                 const response = await result.response;

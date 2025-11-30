@@ -143,41 +143,14 @@ class AnthropicProvider extends BaseAIProvider {
     }
 
     /**
-     * Build prompt specifically for Claude
+     * Build prompt specifically for Claude using base class method
      * @param {string} text - Input text
-     * @param {number} numQuestions - Number of questions
+     * @param {Object} options - Generation options
      * @returns {Array} - Formatted messages for Claude
      */
-    buildClaudePrompt(text, numQuestions = 10) {
-        const prompt = `You are an expert educator creating multiple choice quiz questions. 
-
-Based on the following text, generate exactly ${numQuestions} multiple choice questions.
-
-TEXT:
-${text}
-
-REQUIREMENTS:
-- Generate exactly ${numQuestions} questions
-- Each question must have 4 options (A, B, C, D)
-- Mark the correct answer as A, B, C, or D
-- Assign difficulty level as "easy", "medium", or "hard"
-- Questions should test understanding, not just recall
-- Options should be plausible and well-distributed
-
-Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, just raw JSON):
-{
-  "questions": [
-    {
-      "questiontext": "What is...?",
-      "optiona": "First option",
-      "optionb": "Second option",
-      "optionc": "Third option",
-      "optiond": "Fourth option",
-      "correctanswer": "A",
-      "difficulty": "medium"
-    }
-  ]
-}`;
+    buildClaudePrompt(text, options = {}) {
+        // Use the base class buildPrompt with CoT and Bloom's taxonomy
+        const prompt = this.buildPrompt(text, options);
 
         return [
             {
@@ -195,10 +168,17 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
+        
+        // Ensure difficulty is always set to 'mixed' by default
+        const promptOptions = {
+            numQuestions,
+            bloomLevel: options.bloomLevel || 'apply',
+            difficulty: options.difficulty || 'mixed'
+        };
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
-                const messages = this.buildClaudePrompt(text, numQuestions);
+                const messages = this.buildClaudePrompt(text, promptOptions);
 
                 const response = await this.client.messages.create({
                     model: this.currentModel,
