@@ -102,14 +102,6 @@ class DeepSeekProvider extends BaseAIProvider {
     }
 
     /**
-     * Sleep utility for retry logic
-     * @param {number} ms - Milliseconds to sleep
-     */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
      * Parse DeepSeek response to extract generated text
      * @param {Object} response - DeepSeek API response
      * @returns {string} - Extracted text
@@ -125,21 +117,6 @@ class DeepSeekProvider extends BaseAIProvider {
         }
 
         return message.content;
-    }
-
-    /**
-     * Clean AI response to extract JSON
-     * @param {string} generatedText - Raw text from AI response
-     * @returns {string} - Cleaned JSON text
-     */
-    cleanAIResponse(generatedText) {
-        let cleanedText = generatedText.trim();
-        if (cleanedText.startsWith('```json')) {
-            cleanedText = cleanedText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-        } else if (cleanedText.startsWith('```')) {
-            cleanedText = cleanedText.replace(/^```\n?/, '').replace(/\n?```$/, '');
-        }
-        return cleanedText;
     }
 
     /**
@@ -213,11 +190,8 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
 
                 const generatedText = this.parseResponse(response);
 
-                // Clean the response - remove markdown code blocks if present
-                const cleanedText = this.cleanAIResponse(generatedText);
-
-                // Parse JSON response
-                const parsedResponse = JSON.parse(cleanedText);
+                // Use robust JSON parser from base class
+                const parsedResponse = this.safeJSONParse(generatedText);
 
                 // Standardize and return response
                 const standardized = this.standardizeResponse(parsedResponse, numQuestions);

@@ -106,20 +106,60 @@ class BaseAIProvider {
 
         let jsonString = cleaned.substring(firstBrace, lastBrace + 1);
 
-        // Step 3: Comprehensive cleaning for large responses
+        // DEBUG: Save original for inspection
+        const originalJson = jsonString;
+
+        // Step 3: Fix incomplete JSON structure (missing closing brackets)
+        // Check if questions array is not properly closed
+        if (jsonString.includes('"questions"') && !jsonString.match(/\]\s*\}/)) {
+            // Find the last complete question object
+            const lastBraceIndex = jsonString.lastIndexOf('}');
+            if (lastBraceIndex > 0) {
+                // Add closing bracket for questions array and closing brace for main object
+                jsonString = jsonString.substring(0, lastBraceIndex + 1) + '\n  ]\n}';
+            }
+        }
+
+        // Step 4: Pre-emptively fix common JSON errors BEFORE cleaning
+        // This is critical - we need to fix structural issues before character-level cleaning
+        jsonString = this.fixCommonJSONErrors(jsonString);
+        
+        // Step 5: Comprehensive cleaning for large responses
         // This handles control characters, unescaped quotes, and malformed strings
         jsonString = this.cleanJSONString(jsonString);
         
-        // Step 4: Attempt to parse
+        // Step 6: Attempt to parse
         try {
             const parsed = JSON.parse(jsonString);
             return parsed;
         } catch (parseError) {
-            // Step 5: Last resort - try to fix common JSON errors
+            // Step 7: Try more aggressive fixes
             try {
-                const fixed = this.fixCommonJSONErrors(jsonString);
+                // Additional aggressive fixes for stubborn errors
+                let fixed = jsonString;
+                
+                // Ultra-aggressive: Find the error position and try to fix it
+                const errorPosition = parseError.message.match(/position (\d+)/);
+                if (errorPosition) {
+                    const pos = parseInt(errorPosition[1]);
+                    // Check if there's a missing comma around the error position
+                    const before = fixed.substring(Math.max(0, pos - 10), pos);
+                    const after = fixed.substring(pos, Math.min(fixed.length, pos + 10));
+                    
+                    // If we see }  { or }\n{ pattern around error, it's a missing comma
+                    if (/}\s*$/.test(before) && /^\s*{/.test(after)) {
+                        // Insert comma at the position
+                        fixed = fixed.substring(0, pos) + ',' + fixed.substring(pos);
+                    }
+                }
+                
+                // Also try these patterns globally one more time
+                fixed = fixed.replace(/}(\s+){/g, '},\n{');
+                fixed = fixed.replace(/}({)/g, '},$1');
+                
+                // Try parsing again
                 const parsed = JSON.parse(fixed);
-                console.warn('⚠ JSON required error correction - AI response had formatting issues');
+                console.warn('⚠ JSON required aggressive error correction - AI response had formatting issues');
                 return parsed;
             } catch (secondError) {
                 // Provide detailed error for debugging
@@ -129,12 +169,42 @@ class BaseAIProvider {
                 const contextEnd = Math.min(jsonString.length, pos + 100);
                 const context = jsonString.substring(contextStart, contextEnd);
                 
+                // DEBUG: Save the problematic JSON to a file for inspection
+                const fs = require('fs');
+                const debugPath = `debug-json-error-${Date.now()}.txt`;
+                fs.writeFileSync(debugPath, `ORIGINAL:\n${originalJson}\n\nAFTER FIXES:\n${jsonString}\n\nERROR:\n${parseError.message}\n\nCONTEXT:\n${context}`);
+                console.error(`❌ JSON parsing failed. Debug info saved to: ${debugPath}`);
+                
                 throw new Error(
                     `JSON Parse Error: ${parseError.message}\n` +
                     `Context around error: ...${context}...`
                 );
             }
         }
+    }
+
+    /**
+     * Sleep utility for retry logic and rate limiting
+     * @param {number} ms - Milliseconds to sleep
+     * @returns {Promise<void>}
+     */
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Clean AI response to extract JSON by removing markdown code blocks
+     * @param {string} generatedText - Raw text from AI response
+     * @returns {string} - Cleaned JSON text
+     */
+    cleanAIResponse(generatedText) {
+        let cleanedText = generatedText.trim();
+        if (cleanedText.startsWith('```json')) {
+            cleanedText = cleanedText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+        } else if (cleanedText.startsWith('```')) {
+            cleanedText = cleanedText.replace(/^```\n?/, '').replace(/\n?```$/, '');
+        }
+        return cleanedText;
     }
 
     /**
@@ -217,11 +287,23 @@ class BaseAIProvider {
     fixCommonJSONErrors(jsonString) {
         let fixed = jsonString;
         
-        // Remove trailing commas before closing braces/brackets
-        fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
+        // CRITICAL FIX: Add missing commas between array elements
+        // Pattern: }\n    { or }  { (closing brace, whitespace, opening brace)
+        // This is the most common AI error - missing commas in arrays
+        fixed = fixed.replace(/}(\s+){/g, '},\n{');
+        
+        // Fix missing commas after closing brace before opening brace (no whitespace)
+        fixed = fixed.replace(/}({)/g, '},$1');
         
         // Fix missing commas between properties (common AI error)
         fixed = fixed.replace(/"\s*\n\s*"/g, '",\n"');
+        
+        // Fix missing commas after property values before next property
+        // Pattern: "value"\n    "nextProp": becomes "value",\n    "nextProp":
+        fixed = fixed.replace(/"(\s*\n\s*)"(\w+)":/g, '",$1"$2":');
+        
+        // Remove trailing commas before closing braces/brackets
+        fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
         
         // Remove any remaining control characters
         fixed = fixed.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, '');
@@ -351,7 +433,11 @@ Ensure all questions target this cognitive level specifically.`;
         // If response is a string, parse it first
         let parsedResponse = response;
         if (typeof response === 'string') {
-            parsedResponse = this.safeJSONParse(response);
+            try {
+                parsedResponse = JSON.parse(response);
+            } catch (error) {
+                throw new Error(`Failed to parse JSON response: ${error.message}`);
+            }
         }
 
         let questions = [];

@@ -12,15 +12,9 @@ const cliUI = require('./cli/ascii');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize provider manager
-const providerManager = new ProviderManager();
-
 // Middleware
 app.use(cors()); // Enable CORS for all routes
 app.use(express.json({ limit: '10mb' }));
-
-// Make provider manager available to routes
-app.locals.providerManager = providerManager;
 
 // API Routes
 app.use('/api', apiRoutes);
@@ -85,13 +79,20 @@ async function initializeServer() {
         cliUI.printGardenBanner();
         // cliUI.showSection('Initializing Multi-Provider AI System');
         
+        // Initialize provider manager
+        const providerManager = new ProviderManager();
+        app.locals.providerManager = providerManager;
+        
         await cliUI.showSpinner('Loading AI providers...', 1500);
         await providerManager.initialize();
         cliUI.showSuccess('Multi-Provider AI System initialized');
         
-        // Initialize question generator with caching
-        const GeminiQuestionGenerator = require('./services/questionGenerator');
-        const questionGenerator = new GeminiQuestionGenerator();
+        // Initialize question generator with caching (reuse existing providerManager)
+        const { MultiProviderQuestionGenerator } = require('./services/questionGenerator');
+        // Create question generator WITHOUT passing providerManager - we'll set it manually
+        const questionGenerator = new MultiProviderQuestionGenerator({});
+        // Manually override the providerManager BEFORE initializing
+        questionGenerator.providerManager = app.locals.providerManager;
         await questionGenerator.initialize();
         app.locals.questionGenerator = questionGenerator;
         cliUI.showSuccess('Question generator with caching initialized');
@@ -233,7 +234,9 @@ async function checkSetupNeeded() {
     };
 }
 
-// Start initialization
-initializeServer();
+// Only start server if this file is run directly (not required as a module)
+if (require.main === module) {
+    initializeServer();
+}
 
 module.exports = app;

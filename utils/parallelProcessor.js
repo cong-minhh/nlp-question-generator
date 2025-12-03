@@ -59,12 +59,14 @@ class ParallelProcessor {
                 })
                 .catch(error => {
                     console.error(`Chunk ${chunkIndex} failed:`, error.message);
-                    results[chunkIndex] = {
+                    const errorResult = {
                         success: false,
                         error: error.message,
-                        questions: []
+                        questions: [],
+                        metadata: {}
                     };
-                    return results[chunkIndex];
+                    results[chunkIndex] = errorResult;
+                    return errorResult;
                 });
 
             executing.push(promise);
@@ -153,19 +155,23 @@ class ParallelProcessor {
 
         // Collect all questions and errors
         results.forEach((result, index) => {
-            if (result.success && result.questions) {
+            if (result && result.success && result.questions) {
+                console.log(`Chunk ${index}: ${result.questions.length} questions`);
                 allQuestions.push(...result.questions);
                 totalGenerated += result.questions.length;
             } else {
+                console.log(`Chunk ${index}: FAILED - ${result?.error || 'Unknown error'}`);
                 errors.push({
                     chunk: index,
-                    error: result.error
+                    error: result?.error || 'Unknown error'
                 });
             }
         });
 
+        console.log(`Combined total: ${allQuestions.length} questions from ${results.length} chunks`);
+
         // Get metadata from first successful result
-        const firstSuccess = results.find(r => r.success && r.metadata);
+        const firstSuccess = results.find(r => r && r.success && r.metadata);
         const baseMetadata = firstSuccess?.metadata || {};
 
         return {

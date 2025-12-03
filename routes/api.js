@@ -13,9 +13,6 @@ const {
 
 const router = express.Router();
 
-// Initialize Gemini question generator
-const questionGenerator = new GeminiQuestionGenerator();
-
 /**
  * POST endpoint to generate questions
  * Body: { text: string, num_questions?: number }
@@ -23,6 +20,9 @@ const questionGenerator = new GeminiQuestionGenerator();
  */
 router.post('/generate', authenticate, async (req, res) => {
     try {
+        // Get question generator from app.locals (initialized in server.js)
+        const questionGenerator = req.app.locals.questionGenerator;
+
         // Accept both num_questions and numQuestions for flexibility
         const { text, num_questions, numQuestions } = req.body;
         const requestedQuestions = num_questions || numQuestions || 10;
@@ -39,7 +39,7 @@ router.post('/generate', authenticate, async (req, res) => {
         }
 
         // Generate questions
-        const result = await questionGenerator.generateQuestions(text, numQuestionsValidation.value);
+        const result = await questionGenerator.generateQuestions(text, { numQuestions: numQuestionsValidation.value });
 
         // Return success response
         res.json(createSuccessResponse(result));
@@ -56,8 +56,11 @@ router.post('/generate', authenticate, async (req, res) => {
  */
 router.post('/generate-from-files', authenticate, upload.array('files', 10), async (req, res) => {
     const uploadedFiles = req.files || [];
-    
+
     try {
+        // Get question generator from app.locals (initialized in server.js)
+        const questionGenerator = req.app.locals.questionGenerator;
+
         // Validate files were uploaded
         if (!uploadedFiles || uploadedFiles.length === 0) {
             return res.status(400).json(createErrorResponse(
@@ -67,6 +70,7 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         }
 
         // Accept both num_questions and numQuestions for flexibility
+        console.log('DEBUG: req.body:', JSON.stringify(req.body, null, 2));
         const requestedQuestions = req.body.num_questions || req.body.numQuestions || 10;
         const numQuestionsValidation = validateNumQuestions(requestedQuestions);
         if (!numQuestionsValidation.valid) {
@@ -93,7 +97,7 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         console.log(`Total extracted text: ${combinedText.length} characters from ${extractedTexts.length} file(s)`);
 
         // Generate questions
-        const result = await questionGenerator.generateQuestions(combinedText, numQuestionsValidation.value);
+        const result = await questionGenerator.generateQuestions(combinedText, { numQuestions: numQuestionsValidation.value });
 
         // Return response with file info
         res.json(createSuccessResponse(result, {
@@ -107,7 +111,7 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         if (uploadedFiles.length > 0) {
             await cleanupFiles(uploadedFiles.map(f => f.path));
         }
-        
+
         console.error('API Error:', error);
         res.status(500).json(createErrorResponse(`Failed to generate questions from files: ${error.message}`, 500));
     }
@@ -121,7 +125,7 @@ router.get('/providers', async (req, res) => {
         const providerManager = req.app.locals.providerManager;
         const providers = providerManager.listProviders();
         const currentProvider = providerManager.currentProvider;
-        
+
         res.json(createSuccessResponse({
             currentProvider,
             providers: providers.map(p => ({
@@ -145,7 +149,7 @@ router.get('/current-provider', async (req, res) => {
     try {
         const providerManager = req.app.locals.providerManager;
         const provider = providerManager.getCurrentProvider();
-        
+
         res.json(createSuccessResponse({
             name: provider.name,
             description: provider.description,
@@ -166,29 +170,28 @@ router.get('/current-provider', async (req, res) => {
 router.post('/switch-provider', authenticate, async (req, res) => {
     try {
         const { provider } = req.body;
-        
+
         if (!provider) {
             return res.status(400).json(createErrorResponse('Provider name is required', 400));
         }
-        
+
         const providerManager = req.app.locals.providerManager;
-        
+
         // Check if provider is available
         if (!providerManager.hasProvider(provider)) {
             return res.status(400).json(createErrorResponse(
-                `Provider '${provider}' is not available or not configured. Available providers: ${
-                    providerManager.listProviders()
-                        .filter(p => p.configured)
-                        .map(p => p.name)
-                        .join(', ')
+                `Provider '${provider}' is not available or not configured. Available providers: ${providerManager.listProviders()
+                    .filter(p => p.configured)
+                    .map(p => p.name)
+                    .join(', ')
                 }`,
                 400
             ));
         }
-        
+
         // Switch provider
         providerManager.switchProvider(provider);
-        
+
         res.json(createSuccessResponse({
             message: `Switched to ${provider} provider`,
             currentProvider: provider
@@ -203,7 +206,7 @@ router.post('/switch-provider', authenticate, async (req, res) => {
  * Health check endpoint
  */
 router.get('/health', (req, res) => {
-    res.json(createSuccessResponse({ 
+    res.json(createSuccessResponse({
         status: 'healthy',
         service: 'NLP Question Generator',
         version: '2.0.0',
@@ -279,9 +282,9 @@ router.use('/cache', cacheRoutes);
  */
 router.get('/parallel/config', (req, res) => {
     try {
-        const generator = questionGenerator;
+        const generator = req.app.locals.questionGenerator;
         const config = generator.getParallelConfig();
-        
+
         res.json({
             success: true,
             config
@@ -302,9 +305,9 @@ router.get('/parallel/config', (req, res) => {
 router.get('/parallel/estimate', (req, res) => {
     try {
         const numQuestions = parseInt(req.query.numQuestions) || 30;
-        const generator = questionGenerator;
+        const generator = req.app.locals.questionGenerator;
         const estimate = generator.estimateParallelTimeSavings(numQuestions);
-        
+
         res.json({
             success: true,
             numQuestions,
