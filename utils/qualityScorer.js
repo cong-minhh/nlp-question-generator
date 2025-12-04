@@ -62,7 +62,7 @@ class QualityScorer {
                     reason: 'parse_error'
                 };
             }
-            
+
             return {
                 score: scoreData.score || 0,
                 clarity: scoreData.clarity,
@@ -108,7 +108,7 @@ class QualityScorer {
         // Process in batches
         for (let i = 0; i < questions.length; i += this.batchSize) {
             const batch = questions.slice(i, i + this.batchSize);
-            
+
             try {
                 if (batch.length === 1) {
                     // Single question
@@ -143,7 +143,7 @@ class QualityScorer {
     async scoreBatch(questions) {
         try {
             const prompt = ScoringPrompts.getBatchScoringPrompt(questions);
-            
+
             const response = await this.scorerProvider.generateQuestions(prompt, {
                 numQuestions: 1,
                 noCache: true,
@@ -152,7 +152,7 @@ class QualityScorer {
             });
 
             const scoreData = this.parseBatchScoreResponse(response);
-            
+
             return scoreData.scores.map(s => ({
                 score: s.score || 0,
                 clarity: s.clarity,
@@ -231,7 +231,7 @@ class QualityScorer {
      */
     parseBatchScoreResponse(response) {
         const scoreData = this.parseScoreResponse(response);
-        
+
         if (!scoreData.scores || !Array.isArray(scoreData.scores)) {
             throw new Error('Invalid batch score format');
         }
@@ -252,7 +252,7 @@ class QualityScorer {
 
         questions.forEach((question, index) => {
             const score = scores[index];
-            
+
             if (!score || score.skipped) {
                 accepted.push({ question, score });
                 return;
@@ -296,7 +296,7 @@ class QualityScorer {
         }
 
         console.log(`Scoring ${questions.length} questions (attempt ${attempt}/${this.maxRetries + 1})...`);
-        
+
         const scores = await this.scoreQuestions(questions);
         const filtered = this.filterByScore(questions, scores);
 
@@ -307,11 +307,11 @@ class QualityScorer {
         // If we have rejected questions and can retry
         if (filtered.rejected.length > 0 && attempt <= this.maxRetries && regenerateFn) {
             console.log(`Regenerating ${filtered.rejected.length} low-quality questions...`);
-            
+
             try {
                 // Regenerate rejected questions
                 const newQuestions = await regenerateFn(filtered.rejected.length);
-                
+
                 // Recursively score new questions
                 const improved = await this.scoreAndImprove(
                     newQuestions,
@@ -325,7 +325,7 @@ class QualityScorer {
                     allPassed: false,
                     scores: [...filtered.scores.accepted, ...improved.scores],
                     regenerated: filtered.rejected.length,
-                    attempts: attempt
+                    attempts: improved.attempts
                 };
             } catch (error) {
                 console.warn('Regeneration failed:', error.message);

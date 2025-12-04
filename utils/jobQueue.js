@@ -1,8 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 
 /**
- * In-Memory Job Queue with Optional Persistence
- * Manages async job processing without external dependencies
+ * In-Memory Job Queue with SQLite Persistence
+ * Manages async job processing with database backup
  */
 class JobQueue {
     constructor(config = {}) {
@@ -11,16 +11,58 @@ class JobQueue {
         this.processing = new Set(); // Set of jobIds currently processing
         this.maxConcurrent = config.maxConcurrent || 3;
         this.enabled = config.enabled !== false;
-        this.workers = [];
-        this.jobStore = config.jobStore || null; // Optional persistence
+        this.jobStore = config.jobStore || null; // Required for persistence
+        this.jobProcessor = null;
+    }
+
+    /**
+     * Restore pending jobs from store
+     */
+    async restore() {
+        if (!this.enabled || !this.jobStore) return;
+
+        try {
+            console.log('Restoring pending jobs from database...');
+            const pendingJobs = await this.jobStore.loadAllJobs({ status: 'pending' });
+
+            for (const job of pendingJobs) {
+                this.jobs.set(job.id, job);
+                this.queue.push(job.id);
+            }
+
+            console.log(`Restored ${pendingJobs.length} pending jobs`);
+
+            // Also load processing jobs (they were interrupted)
+            const processingJobs = await this.jobStore.loadAllJobs({ status: 'processing' });
+            for (const job of processingJobs) {
+                // Reset status to pending to retry
+                job.status = 'pending';
+                job.startedAt = null;
+                job.progress = 0;
+
+                this.jobs.set(job.id, job);
+                this.queue.push(job.id);
+
+                // Update store to reflect reset
+                await this.jobStore.saveJob(job);
+            }
+
+            if (processingJobs.length > 0) {
+                console.log(`Reset ${processingJobs.length} interrupted jobs to pending`);
+            }
+
+            this.processQueue();
+        } catch (error) {
+            console.error('Failed to restore jobs:', error);
+        }
     }
 
     /**
      * Create a new job
      * @param {Object} data - Job data
-     * @returns {string} - Job ID
+     * @returns {Promise<string>} - Job ID
      */
-    createJob(data) {
+    async createJob(data) {
         const jobId = uuidv4();
         const job = {
             id: jobId,
@@ -34,11 +76,16 @@ class JobQueue {
             progress: 0
         };
 
+        // Save to store first
+        if (this.jobStore) {
+            await this.jobStore.saveJob(job);
+        }
+
         this.jobs.set(jobId, job);
         this.queue.push(jobId);
 
         console.log(`Job created: ${jobId}`);
-        
+
         // Start processing if not already running
         this.processQueue();
 
@@ -48,27 +95,49 @@ class JobQueue {
     /**
      * Get job by ID
      * @param {string} jobId - Job ID
-     * @returns {Object|null} - Job object
+     * @returns {Promise<Object|null>} - Job object
      */
-    getJob(jobId) {
-        return this.jobs.get(jobId) || null;
+    async getJob(jobId) {
+        // Check memory first
+        if (this.jobs.has(jobId)) {
+            return this.jobs.get(jobId);
+        }
+
+        // Check store
+        if (this.jobStore) {
+            const job = await this.jobStore.loadJob(jobId);
+            if (job) {
+                // Cache in memory if found? Maybe not to save RAM
+                return job;
+            }
+        }
+
+        return null;
     }
 
     /**
      * Get all jobs
-     * @returns {Array} - Array of jobs
+     * @returns {Promise<Array>} - Array of jobs
      */
-    getAllJobs() {
+    async getAllJobs() {
+        // Return in-memory jobs + recent from store?
+        // For simplicity, let's ask the store for everything if available
+        if (this.jobStore) {
+            return await this.jobStore.loadAllJobs({ limit: 100 });
+        }
         return Array.from(this.jobs.values());
     }
 
     /**
      * Get jobs by status
      * @param {string} status - Job status
-     * @returns {Array} - Array of jobs
+     * @returns {Promise<Array>} - Array of jobs
      */
-    getJobsByStatus(status) {
-        return this.getAllJobs().filter(job => job.status === status);
+    async getJobsByStatus(status) {
+        if (this.jobStore) {
+            return await this.jobStore.loadAllJobs({ status, limit: 100 });
+        }
+        return Array.from(this.jobs.values()).filter(job => job.status === status);
     }
 
     /**
@@ -77,7 +146,7 @@ class JobQueue {
      * @param {string} status - New status
      * @param {Object} updates - Additional updates
      */
-    updateJob(jobId, status, updates = {}) {
+    async updateJob(jobId, status, updates = {}) {
         const job = this.jobs.get(jobId);
         if (!job) return;
 
@@ -91,11 +160,14 @@ class JobQueue {
         if (status === 'completed' || status === 'failed') {
             job.completedAt = Date.now();
             this.processing.delete(jobId);
+
+            // Optional: Remove from memory to save RAM, keep in store
+            // this.jobs.delete(jobId); 
         }
 
-        // Persist to database if available
+        // Persist to database
         if (this.jobStore) {
-            this.jobStore.saveJob(job).catch(err => {
+            await this.jobStore.saveJob(job).catch(err => {
                 console.warn('Job persistence error:', err.message);
             });
         }
@@ -128,7 +200,7 @@ class JobQueue {
         if (!job) return;
 
         try {
-            this.updateJob(jobId, 'processing');
+            await this.updateJob(jobId, 'processing');
             console.log(`Processing job: ${jobId}`);
 
             // Job processor should be set externally
@@ -136,17 +208,21 @@ class JobQueue {
                 throw new Error('Job processor not configured');
             }
 
-            const result = await this.jobProcessor(job.data, (progress) => {
+            const result = await this.jobProcessor(job.data, async (progress) => {
                 job.progress = progress;
+                // Don't await every progress update to avoid DB bottleneck
+                if (progress % 10 === 0) {
+                    this.updateJob(jobId, 'processing', { progress }).catch(console.error);
+                }
             });
 
-            this.updateJob(jobId, 'completed', { result, progress: 100 });
+            await this.updateJob(jobId, 'completed', { result, progress: 100 });
             console.log(`✓ Job completed: ${jobId}`);
 
         } catch (error) {
-            this.updateJob(jobId, 'failed', { 
+            await this.updateJob(jobId, 'failed', {
                 error: error.message,
-                progress: job.progress 
+                progress: job.progress
             });
             console.error(`✗ Job failed: ${jobId} - ${error.message}`);
         } finally {
@@ -161,15 +237,22 @@ class JobQueue {
      */
     setProcessor(processor) {
         this.jobProcessor = processor;
+        if (this.enabled) {
+            this.processQueue();
+        }
     }
 
     /**
      * Cancel a job
      * @param {string} jobId - Job ID
-     * @returns {boolean} - Success
+     * @returns {Promise<boolean>} - Success
      */
-    cancelJob(jobId) {
+    async cancelJob(jobId) {
         const job = this.jobs.get(jobId);
+
+        // If not in memory, check store (might be pending but not loaded?)
+        // For now assume active jobs are in memory
+
         if (!job) return false;
 
         if (job.status === 'pending') {
@@ -178,13 +261,8 @@ class JobQueue {
             if (index > -1) {
                 this.queue.splice(index, 1);
             }
-            this.updateJob(jobId, 'cancelled');
+            await this.updateJob(jobId, 'cancelled');
             return true;
-        }
-
-        if (job.status === 'processing') {
-            // Can't cancel processing jobs easily
-            return false;
         }
 
         return false;
@@ -194,7 +272,13 @@ class JobQueue {
      * Clear completed jobs
      * @param {number} olderThan - Clear jobs older than this (ms)
      */
-    clearCompleted(olderThan = 3600000) { // 1 hour default
+    async clearCompleted(olderThan = 3600000) { // 1 hour default
+        // Clear from store
+        if (this.jobStore) {
+            await this.jobStore.deleteOldJobs(olderThan);
+        }
+
+        // Clear from memory
         const now = Date.now();
         const toDelete = [];
 
@@ -207,17 +291,22 @@ class JobQueue {
         });
 
         toDelete.forEach(jobId => this.jobs.delete(jobId));
-        
-        if (toDelete.length > 0) {
-            console.log(`Cleared ${toDelete.length} old jobs`);
-        }
     }
 
     /**
      * Get queue statistics
-     * @returns {Object} - Statistics
+     * @returns {Promise<Object>} - Statistics
      */
-    getStats() {
+    async getStats() {
+        if (this.jobStore) {
+            const stats = await this.jobStore.getStats();
+            return {
+                ...stats,
+                queueLength: this.queue.length,
+                maxConcurrent: this.maxConcurrent
+            };
+        }
+
         const stats = {
             total: this.jobs.size,
             pending: 0,

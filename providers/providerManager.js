@@ -7,6 +7,7 @@ const AnthropicProvider = require('./anthropicProvider');
 const DeepSeekProvider = require('./deepseekProvider');
 const KimiProvider = require('./kimiProvider');
 const KimiCnProvider = require('./kimiCnProvider');
+const LocalProvider = require('./localProvider');
 const ProviderRouter = require('../utils/providerRouter');
 
 /**
@@ -20,13 +21,13 @@ class ProviderManager {
         this.currentProvider = config.currentProvider || this.defaultProvider;
         this.config = config;
         this.initialized = false;
-        
+
         // Initialize smart router
         this.router = new ProviderRouter({
             enabled: process.env.SMART_ROUTING_ENABLED !== 'false',
             routingStrategy: process.env.ROUTING_PRIORITY || 'balanced'
         });
-        
+
         console.log(`Default provider set to: ${this.defaultProvider}`);
         if (this.router.enabled) {
             console.log(`Smart routing enabled (strategy: ${this.router.routingStrategy})`);
@@ -42,10 +43,10 @@ class ProviderManager {
         }
 
         console.log('Initializing AI Providers...');
-        
+
         // Load all providers
         await this.loadProviders(config);
-        
+
         // Validate current provider
         if (!this.hasProvider(this.currentProvider)) {
             console.warn(`Current provider '${this.currentProvider}' not available, falling back to '${this.defaultProvider}'`);
@@ -143,6 +144,21 @@ class ProviderManager {
         } catch (error) {
             console.warn('⚠ Kimi CN provider failed to load:', error.message);
         }
+
+        // Load Local Provider
+        try {
+            const localConfig = {
+                baseUrl: process.env.LOCAL_API_URL || 'http://localhost:11434',
+                model: process.env.LOCAL_MODEL || 'llama3',
+                ...(config.local || {})
+            };
+            const localProvider = new LocalProvider(localConfig);
+            await localProvider.initialize(localConfig);
+            this.providers.set('local', localProvider);
+            console.log('✓ Local provider loaded');
+        } catch (error) {
+            console.warn('⚠ Local provider failed to load:', error.message);
+        }
     }
 
     /**
@@ -191,7 +207,7 @@ class ProviderManager {
      */
     listProviders() {
         const providers = [];
-        
+
         for (const [name, provider] of this.providers) {
             providers.push({
                 name: name,
@@ -202,7 +218,7 @@ class ProviderManager {
         }
 
         // Add unavailable providers
-        const allProviderNames = ['gemini', 'openai', 'anthropic', 'deepseek', 'kimi', 'kimicn'];
+        const allProviderNames = ['gemini', 'openai', 'anthropic', 'deepseek', 'kimi', 'kimicn', 'local'];
         for (const name of allProviderNames) {
             if (!providers.find(p => p.name === name)) {
                 providers.push({
@@ -253,10 +269,10 @@ class ProviderManager {
                     // Temporarily switch to selected provider
                     const originalProvider = this.currentProvider;
                     this.currentProvider = selectedProvider;
-                    
+
                     try {
                         const result = await this._generateWithProvider(text, options);
-                        
+
                         // Record success
                         const cost = this.router.costTracker.calculateCost(
                             selectedProvider,
@@ -264,15 +280,15 @@ class ProviderManager {
                             options.numQuestions || 10
                         );
                         this.router.recordSuccess(selectedProvider, cost);
-                        
+
                         // Restore original provider
                         this.currentProvider = originalProvider;
-                        
+
                         return result;
                     } catch (error) {
                         // Record failure
                         this.router.recordFailure(selectedProvider, error);
-                        
+
                         // Restore original provider
                         this.currentProvider = originalProvider;
                         throw error;
@@ -296,7 +312,7 @@ class ProviderManager {
      */
     async _generateWithProvider(text, options = {}) {
         const provider = this.getCurrentProvider();
-        
+
         const enrichedOptions = {
             ...options,
             provider: this.currentProvider
@@ -304,7 +320,7 @@ class ProviderManager {
 
         console.log(`Generating questions using ${this.currentProvider} provider...`);
         const result = await provider.generateQuestions(text, enrichedOptions);
-        
+
         return {
             ...result,
             metadata: {
@@ -330,10 +346,10 @@ class ProviderManager {
             try {
                 const provider = this.getProvider(providerInfo.name);
                 console.log(`Testing ${providerInfo.name}...`);
-                
+
                 const result = await provider.testConnection();
                 results[providerInfo.name] = result;
-                
+
                 if (result.success) {
                     console.log(`✓ ${providerInfo.name} test successful`);
                 } else {
@@ -464,7 +480,7 @@ class ProviderManager {
             if (!fs.existsSync(configDir)) {
                 fs.mkdirSync(configDir, { recursive: true });
             }
-            
+
             fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
             console.log(`Configuration saved to ${configPath}`);
         } catch (error) {

@@ -280,10 +280,13 @@ class MultiProviderQuestionGenerator {
 
             // Apply difficulty balancing if enabled and difficulty is 'mixed'
             const requestedDifficulty = options.difficulty || 'mixed';
+
+
             if (options.balanceDifficulty !== false &&
                 this.difficultyBalancer &&
                 this.difficultyBalancer.enabled &&
                 requestedDifficulty === 'mixed') {
+
 
                 const balanceResult = await this.difficultyBalancer.balance(
                     result.questions,
@@ -299,6 +302,7 @@ class MultiProviderQuestionGenerator {
                         return regenResult.questions;
                     }
                 );
+
 
                 result = {
                     ...result,
@@ -330,6 +334,7 @@ class MultiProviderQuestionGenerator {
                     console.warn('Cache write error:', err.message);
                 });
             }
+
 
             return result;
         } catch (error) {

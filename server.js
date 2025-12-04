@@ -50,22 +50,22 @@ async function initializeServer() {
         // Check if first-time setup is needed
         const setupNeeded = await checkSetupNeeded();
         if (setupNeeded.shouldSetup) {
-            cliUI.printGardenBanner();
+            cliUI.printBanner();
             cliUI.showSection('First-Time Setup Required');
             cliUI.showInfo('Configuration files are missing or incomplete.');
             cliUI.showInfo('Would you like to run the setup wizard?');
-            
+
             const readline = require('readline');
             const rl = readline.createInterface({
                 input: process.stdin,
                 output: process.stdout
             });
-            
+
             const answer = await new Promise((resolve) => {
                 rl.question('\nRun setup wizard? (Y/n): ', resolve);
             });
             rl.close();
-            
+
             if (!answer || answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
                 const SetupManager = require('./setup');
                 const setup = new SetupManager();
@@ -76,17 +76,17 @@ async function initializeServer() {
         }
 
         // Display startup banner
-        cliUI.printGardenBanner();
+        cliUI.printBanner();
         // cliUI.showSection('Initializing Multi-Provider AI System');
-        
+
         // Initialize provider manager
         const providerManager = new ProviderManager();
         app.locals.providerManager = providerManager;
-        
+
         await cliUI.showSpinner('Loading AI providers...', 1500);
         await providerManager.initialize();
         cliUI.showSuccess('Multi-Provider AI System initialized');
-        
+
         // Initialize question generator with caching (reuse existing providerManager)
         const { MultiProviderQuestionGenerator } = require('./services/questionGenerator');
         // Create question generator WITHOUT passing providerManager - we'll set it manually
@@ -112,6 +112,9 @@ async function initializeServer() {
             jobStore: jobStore
         });
 
+        // Restore pending jobs from database
+        await jobQueue.restore();
+
         // Initialize job processor
         const JobProcessor = require('./utils/jobProcessor');
         const jobProcessor = new JobProcessor(jobQueue, questionGenerator);
@@ -120,7 +123,7 @@ async function initializeServer() {
         app.locals.jobQueue = jobQueue;
         app.locals.jobStore = jobStore;
         app.locals.jobProcessor = jobProcessor;
-        
+
         if (jobQueue.enabled) {
             cliUI.showSuccess(`Job queue initialized (${jobQueue.maxConcurrent} workers)`);
         }
@@ -129,10 +132,10 @@ async function initializeServer() {
         // Streaming routes are disabled (commented out in routes/streamRoutes.js)
         // const streamRoutes = require('./routes/streamRoutes');
         // app.use('/api/stream', streamRoutes);
-        
+
         const jobRoutes = require('./routes/jobRoutes');
         app.use('/api/jobs', jobRoutes);
-        
+
         // Show available providers
         cliUI.showSection('Available AI Providers');
         const providers = providerManager.listProviders();
@@ -140,7 +143,7 @@ async function initializeServer() {
             const status = provider.available && provider.configured ? 'configured' : 'not configured';
             cliUI.showProviderStatus(provider.name, status, provider.description);
         });
-        
+
         // Show API endpoints
         // cliUI.showSection('API Endpoints');
         // cliUI.showEndpoint('GET', `http://localhost:${PORT}/api`, 'Main API endpoint');
@@ -150,23 +153,23 @@ async function initializeServer() {
         // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate`, 'Generate questions from text');
         // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate-from-files`, 'Generate from uploaded files');
         // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/switch-provider`, 'Switch between AI providers');
-        
+
         // Show supported file formats
         // cliUI.showSection('Supported File Formats');
         // console.log('   PDF, DOC, DOCX, PPT, PPTX, TXT');
-        
+
         // Global error handler (must be last middleware)
         app.use(ErrorHandler.expressErrorHandler);
-        
+
         // Start server
         app.listen(PORT, () => {
             console.log(`\n${cliUI.colors.green}Server is ready!${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.cyan}NLP Question Generator running on port ${PORT}${cliUI.colors.reset}`);
-            
+
             // Show security status
             const apiMode = process.env.API_MODE || 'public';
             const hasApiKey = process.env.SERVER_API_KEY && process.env.SERVER_API_KEY.trim() !== '';
-            
+
             if (apiMode === 'private' && hasApiKey) {
                 console.log(`\n${cliUI.colors.green}Security: PRIVATE MODE (API key required)${cliUI.colors.reset}`);
             } else if (apiMode === 'private' && !hasApiKey) {
@@ -176,14 +179,14 @@ async function initializeServer() {
                 console.log(`\n${cliUI.colors.yellow}Security: PUBLIC MODE (no authentication)${cliUI.colors.reset}`);
                 console.log(`${cliUI.colors.gray}Set API_MODE=private in .env for production${cliUI.colors.reset}`);
             }
-            
+
             console.log(`\n${cliUI.colors.yellow}API Documentation: ${cliUI.colors.cyan}http://localhost:${PORT}/docs${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run setup' for first-time configuration${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.gray}Use 'npm run config' for API key configuration${cliUI.colors.reset}`);
             cliUI.showSystemInfo();
         });
     } catch (error) {
-        cliUI.printGardenBanner();
+        cliUI.printBanner();
         cliUI.showSection('Initialization Error');
         cliUI.showError(`Failed to initialize server: ${error.message}`);
         cliUI.showInfo('Make sure all dependencies are installed and configuration is correct');
@@ -197,23 +200,23 @@ async function initializeServer() {
 async function checkSetupNeeded() {
     const fs = require('fs');
     const envFile = path.join(__dirname, '.env');
-    
+
     // Check if .env exists
     const envExists = fs.existsSync(envFile);
-    
+
     if (!envExists) {
         return {
             shouldSetup: true,
             reason: 'Missing .env file'
         };
     }
-    
+
     // Check if .env has at least one valid API key (not empty)
     let hasApiKeys = false;
     try {
         const envContent = fs.readFileSync(envFile, 'utf8');
         const apiKeys = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DEEPSEEK_API_KEY', 'KIMI_API_KEY', 'KIMICN_API_KEY'];
-        
+
         hasApiKeys = apiKeys.some(key => {
             // Match pattern: KEY=value (where value is not empty and not just whitespace)
             const regex = new RegExp(`^${key}=(.+)$`, 'm');
@@ -227,7 +230,7 @@ async function checkSetupNeeded() {
             reason: 'Error reading .env file'
         };
     }
-    
+
     return {
         shouldSetup: !hasApiKeys,
         reason: hasApiKeys ? 'Configuration complete' : 'No API keys configured'

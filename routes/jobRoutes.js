@@ -30,7 +30,7 @@ router.post('/', authenticate, async (req, res) => {
             });
         }
 
-        const jobId = jobQueue.createJob({
+        const jobId = await jobQueue.createJob({
             text,
             numQuestions: numQuestions || 10,
             difficulty: difficulty || 'mixed',
@@ -56,7 +56,7 @@ router.post('/', authenticate, async (req, res) => {
  * GET /jobs/:id
  * Get job status
  */
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
     try {
         const jobQueue = req.app.locals.jobQueue;
         if (!jobQueue) {
@@ -66,7 +66,7 @@ router.get('/:id', (req, res) => {
             });
         }
 
-        const job = jobQueue.getJob(req.params.id);
+        const job = await jobQueue.getJob(req.params.id);
         if (!job) {
             return res.status(404).json({
                 success: false,
@@ -99,7 +99,7 @@ router.get('/:id', (req, res) => {
  * GET /jobs/:id/result
  * Get job result
  */
-router.get('/:id/result', (req, res) => {
+router.get('/:id/result', async (req, res) => {
     try {
         const jobQueue = req.app.locals.jobQueue;
         if (!jobQueue) {
@@ -109,7 +109,7 @@ router.get('/:id/result', (req, res) => {
             });
         }
 
-        const job = jobQueue.getJob(req.params.id);
+        const job = await jobQueue.getJob(req.params.id);
         if (!job) {
             return res.status(404).json({
                 success: false,
@@ -143,7 +143,7 @@ router.get('/:id/result', (req, res) => {
  * GET /jobs
  * List all jobs
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
         const jobQueue = req.app.locals.jobQueue;
         if (!jobQueue) {
@@ -154,9 +154,11 @@ router.get('/', (req, res) => {
         }
 
         const status = req.query.status;
-        const jobs = status 
-            ? jobQueue.getJobsByStatus(status)
-            : jobQueue.getAllJobs();
+        const jobs = status
+            ? await jobQueue.getJobsByStatus(status)
+            : await jobQueue.getAllJobs();
+
+        const stats = await jobQueue.getStats();
 
         res.json({
             success: true,
@@ -167,7 +169,7 @@ router.get('/', (req, res) => {
                 createdAt: new Date(job.createdAt).toISOString(),
                 completedAt: job.completedAt ? new Date(job.completedAt).toISOString() : null
             })),
-            stats: jobQueue.getStats()
+            stats
         });
     } catch (error) {
         console.error('Job list error:', error);
@@ -182,7 +184,7 @@ router.get('/', (req, res) => {
  * DELETE /jobs/:id
  * Cancel a job
  */
-router.delete('/:id', authenticate, (req, res) => {
+router.delete('/:id', authenticate, async (req, res) => {
     try {
         const jobQueue = req.app.locals.jobQueue;
         if (!jobQueue) {
@@ -192,8 +194,8 @@ router.delete('/:id', authenticate, (req, res) => {
             });
         }
 
-        const cancelled = jobQueue.cancelJob(req.params.id);
-        
+        const cancelled = await jobQueue.cancelJob(req.params.id);
+
         if (cancelled) {
             res.json({
                 success: true,
