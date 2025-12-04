@@ -13,7 +13,8 @@
     "config": "node cli/cli.js config",
     "test": "node cli/cli.js test",
     "cli": "node cli/cli.js",
-    "generate-key": "node utils/generateApiKey.js"
+    "generate-key": "node utils/generateApiKey.js",
+    "build": "echo 'No build step required'"
   },
   "keywords": [
     "nlp",
