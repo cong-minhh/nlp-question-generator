@@ -163,9 +163,9 @@ class ConfigManager {
             const value = env[key];
             if (value && value.length > 0) {
                 const masked = value.substring(0, 8) + '*'.repeat(Math.max(0, value.length - 8));
-                console.log(`  ✓ ${name}: ${masked}`);
+                console.log(`✓ ${name}: ${masked}`);
             } else {
-                console.log(`  ❌ ${name}: Not configured`);
+                console.log(`❌ ${name}: Not configured`);
             }
         }
         
@@ -270,7 +270,7 @@ class ConfigManager {
             console.log(`  ${index + 1}. ${providerNames[provider]}${isCurrent}`);
         });
         
-        console.log('  0. Cancel\n');
+        console.log('0. Cancel\n');
         
         const choice = await this.question(`Select default provider (0-${configuredProviders.length}): `);
         const choiceNum = parseInt(choice.trim());

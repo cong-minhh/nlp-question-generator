@@ -18,22 +18,36 @@ const colors = {
 };
 
 /**
- * Main ASCII Art Banner
+ * Gemini-style Gradient Banner
  */
-/*
-const mainBanner = `
-${colors.cyan}╔══════════════════════════════════════════════════════════════════════╗${colors.reset}
-${colors.cyan}║${colors.reset}  ${colors.bright}${colors.white}█   █ █▀▀▀█ █▀▀▀█ █▀▀▀█ ▀▀█▀▀ █▀▀█ █▀▀▄ ${colors.cyan}║${colors.reset}
-${colors.cyan}║${colors.reset}  ${colors.bright}${colors.white}█   █ █   █ █   █ █   █   █   █▄▄█ █▀▀▄ ${colors.cyan}║${colors.reset}
-${colors.cyan}║${colors.reset}  ${colors.bright}${colors.white}▀▀▀▀▀ ▀▀▀▀▀ ▀▀▀▀▀ ▀▀▀▀▀   ▀   ▀▀▀▀ ▀▀▀▀ ${colors.cyan}║${colors.reset}
-${colors.cyan}║${colors.reset}  ${colors.cyan}         ${colors.bright}${colors.white}Multi-Provider AI System${colors.cyan}                  ${colors.cyan}║${colors.reset}
-${colors.cyan}╚══════════════════════════════════════════════════════════════════════╝${colors.reset}`;
-*/
+const geminiBanner = `
+ ███╗   ██╗██╗     ██████╗      ██████╗  ██████╗ 
+ ████╗  ██║██║     ██╔══██╗    ██╔═══██╗██╔════╝ 
+ ██╔██╗ ██║██║     ██████╔╝    ██║   ██║██║  ███╗
+ ██║╚██╗██║██║     ██╔═══╝     ██║▄▄ ██║██║   ██║
+ ██║ ╚████║███████╗██║         ╚██████╔╝╚██████╔╝
+ ╚═╝  ╚═══╝╚══════╝╚═╝          ╚══▀▀═╝  ╚═════╝ 
+`;
 
 /**
- * Secondary banner with version info
+ * Apply blue gradient to text
  */
-const versionBanner = `${colors.gray}│ ${colors.yellow}Version${colors.reset} ${colors.white}v3.0.0${colors.gray}  │ ${colors.yellow}Multi-Provider${colors.reset}  │ ${colors.yellow}CLI Ready${colors.reset}  │${colors.gray}\n`;
+function applyGradient(text) {
+    const lines = text.split('\n');
+    const gradient = [
+        '\x1b[38;5;51m', // Light Cyan
+        '\x1b[38;5;45m',
+        '\x1b[38;5;39m',
+        '\x1b[38;5;33m',
+        '\x1b[38;5;27m',
+        '\x1b[38;5;21m'  // Blue
+    ];
+
+    return lines.map((line, index) => {
+        const color = gradient[index % gradient.length];
+        return `${color}${line}${colors.reset}`;
+    }).join('\n');
+}
 
 /**
  * Small compact banner
@@ -43,17 +57,6 @@ ${colors.cyan}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
 ${colors.cyan}▓${colors.reset} ${colors.bright}${colors.white}NLP QUESTION GENERATOR${colors.reset} ${colors.cyan}▓
 ${colors.cyan}▓${colors.reset}     ${colors.dim}${colors.white}Multi-Provider AI System v3.0${colors.reset}    ${colors.cyan}▓
 ${colors.cyan}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓${colors.reset}
-`;
-
-/**
- * Cozy Garden Banner
- */
-const gardenBanner = `
-${colors.green}    ╱|、${colors.reset}                 ${colors.cyan}╭───────────────────╮${colors.reset}
-${colors.green}   (˚ˎ 。7${colors.reset}               ${colors.cyan}|   NLP Question    |${colors.reset}
-${colors.green}   |、˜〵${colors.reset}                ${colors.cyan}|    Generator      |${colors.reset}
-${colors.green}   じしˍ,)ノ${colors.reset}             ${colors.cyan}╰───────────────────╯${colors.reset}
-${colors.gray}  ─────────────────────────────────────${colors.reset}
 `;
 
 /**
@@ -67,7 +70,7 @@ const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '
 function createProgressBar(current, total, width = 30) {
     const filled = Math.round((current / total) * width);
     const empty = width - filled;
-    
+
     return `[${'█'.repeat(filled)}${'░'.repeat(empty)}] ${current}/${total}`;
 }
 
@@ -155,17 +158,6 @@ function clear() {
 }
 
 /**
- * Print main banner with version
- */
-/*
-function printMainBanner() {
-    clear();
-    console.log(mainBanner);
-    console.log(versionBanner);
-}
-*/
-
-/**
  * Print compact banner
  */
 function printCompactBanner() {
@@ -173,13 +165,13 @@ function printCompactBanner() {
 }
 
 /**
- * Print garden banner
+ * Print Gemini-style banner
  */
-function printGardenBanner() {
+function printBanner() {
     clear();
-    console.log(gardenBanner);
+    console.log(applyGradient(geminiBanner));
+    console.log(`${colors.gray}   NLP Question Generator v3.0${colors.reset}\n`);
 }
-
 
 /**
  * Animated typing effect for important messages
@@ -206,21 +198,21 @@ function createBox(content, title = '') {
     const lines = content.split('\n');
     const maxLength = Math.max(...lines.map(line => line.length), title.length);
     const boxWidth = maxLength + 4;
-    
+
     let box = `${colors.cyan}┌${'─'.repeat(boxWidth - 2)}┐${colors.reset}\n`;
-    
+
     if (title) {
         // Note: String.prototype.padLeft is not a standard function. Using padStart.
         const paddedTitle = title.padStart(title.length + Math.floor((boxWidth - title.length - 2) / 2)).padEnd(boxWidth - 2);
         box += `${colors.cyan}│${colors.reset} ${colors.bright}${paddedTitle}${colors.reset} ${colors.cyan}│${colors.reset}\n`;
         box += `${colors.cyan}├${'─'.repeat(boxWidth - 2)}┤${colors.reset}\n`;
     }
-    
+
     for (const line of lines) {
         const padded = line.padEnd(maxLength);
         box += `${colors.cyan}│${colors.reset} ${padded} ${colors.cyan}│${colors.reset}\n`;
     }
-    
+
     box += `${colors.cyan}└${'─'.repeat(boxWidth - 2)}┘${colors.reset}`;
     return box;
 }
@@ -249,9 +241,8 @@ function showSystemInfo() {
 
 module.exports = {
     colors,
-    // mainBanner, // <-- Removed
     compactBanner,
-    gardenBanner, // <-- Added your new banner
+    geminiBanner,
     showSpinner,
     showSuccess,
     showError,
@@ -261,9 +252,8 @@ module.exports = {
     showProviderStatus,
     showEndpoint,
     clear,
-    // printMainBanner, // <-- Removed
     printCompactBanner,
-    printGardenBanner, // <-- Added this new function
+    printBanner,
     typeWriter,
     showVersion,
     createBox,

@@ -86,7 +86,7 @@ class KimiProvider extends BaseAIProvider {
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`🔄 Falling back to Kimi model: ${fallbackModel}`);
+        console.log(`Falling back to Kimi model: ${fallbackModel}`);
         
         this.currentModel = fallbackModel;
         return true;
@@ -97,13 +97,6 @@ class KimiProvider extends BaseAIProvider {
      */
     isConfigured() {
         return !!(this.config.apiKey);
-    }
-
-    /**
-     * Sleep utility for retry logic
-     */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
@@ -123,27 +116,26 @@ class KimiProvider extends BaseAIProvider {
     }
 
     /**
-     * Clean AI response to extract JSON
-     */
-    cleanAIResponse(generatedText) {
-        let cleanedText = generatedText.trim();
-        if (cleanedText.startsWith('```json')) {
-            cleanedText = cleanedText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-        } else if (cleanedText.startsWith('```')) {
-            cleanedText = cleanedText.replace(/^```\n?/, '').replace(/\n?```$/, '');
-        }
-        return cleanedText;
-    }
-
-    /**
      * Generate questions using Kimi AI with automatic model fallback
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
+        
+        // Ensure difficulty is always set to 'mixed' by default
+        const promptOptions = {
+            numQuestions,
+            bloomLevel: options.bloomLevel || 'apply',
+            difficulty: options.difficulty || 'mixed'
+        };
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
-                const prompt = this.buildPrompt(text, numQuestions);
+                const prompt = this.buildPrompt(text, promptOptions);
+
+                // Calculate max_tokens based on number of questions
+                // Each question needs ~350-400 tokens (question + options + rationale)
+                // Add buffer for analysis and JSON structure
+                // const maxTokens = Math.max(2000, numQuestions * 400 + 500);
 
                 const response = await this.client.chat.completions.create({
                     model: this.currentModel,
@@ -157,13 +149,14 @@ class KimiProvider extends BaseAIProvider {
                             content: prompt
                         }
                     ],
-                    temperature: 0.7,
-                    max_tokens: 2000
+                    temperature: 0.7
+                    // max_tokens: maxTokens  // Commented out to allow unlimited tokens for large requests
                 });
 
                 const generatedText = this.parseResponse(response);
-                const cleanedText = this.cleanAIResponse(generatedText);
-                const parsedResponse = JSON.parse(cleanedText);
+                
+                // Use robust JSON parser from base class
+                const parsedResponse = this.safeJSONParse(generatedText);
                 const standardized = this.standardizeResponse(parsedResponse, numQuestions);
                 
                 // Trim to requested number of questions

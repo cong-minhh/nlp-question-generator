@@ -59,7 +59,7 @@ class OpenAIProvider extends BaseAIProvider {
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`🔄 Falling back to OpenAI model: ${fallbackModel}`);
+        console.log(`Falling back to OpenAI model: ${fallbackModel}`);
         
         this.currentModel = fallbackModel;
         return true;
@@ -104,14 +104,6 @@ class OpenAIProvider extends BaseAIProvider {
     }
 
     /**
-     * Sleep utility for retry logic
-     * @param {number} ms - Milliseconds to sleep
-     */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
      * Parse OpenAI response to extract generated text
      * @param {Object} response - OpenAI API response
      * @returns {string} - Extracted text
@@ -130,21 +122,6 @@ class OpenAIProvider extends BaseAIProvider {
     }
 
     /**
-     * Clean AI response to extract JSON
-     * @param {string} generatedText - Raw text from AI response
-     * @returns {string} - Cleaned JSON text
-     */
-    cleanAIResponse(generatedText) {
-        let cleanedText = generatedText.trim();
-        if (cleanedText.startsWith('```json')) {
-            cleanedText = cleanedText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-        } else if (cleanedText.startsWith('```')) {
-            cleanedText = cleanedText.replace(/^```\n?/, '').replace(/\n?```$/, '');
-        }
-        return cleanedText;
-    }
-
-    /**
      * Generate questions using OpenAI with automatic model fallback
      * @param {string} text - Input text
      * @param {Object} options - Generation options
@@ -152,10 +129,17 @@ class OpenAIProvider extends BaseAIProvider {
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
+        
+        // Ensure difficulty is always set to 'mixed' by default
+        const promptOptions = {
+            numQuestions,
+            bloomLevel: options.bloomLevel || 'apply',
+            difficulty: options.difficulty || 'mixed'
+        };
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
-                const prompt = this.buildPrompt(text, numQuestions);
+                const prompt = this.buildPrompt(text, promptOptions);
 
                 const response = await this.client.chat.completions.create({
                     model: this.currentModel,
@@ -175,11 +159,8 @@ class OpenAIProvider extends BaseAIProvider {
 
                 const generatedText = this.parseResponse(response);
 
-                // Clean the response - remove markdown code blocks if present
-                const cleanedText = this.cleanAIResponse(generatedText);
-
-                // Parse JSON response
-                const parsedResponse = JSON.parse(cleanedText);
+                // Use robust JSON parser from base class
+                const parsedResponse = this.safeJSONParse(generatedText);
 
                 // Standardize and return response
                 const standardized = this.standardizeResponse(parsedResponse, numQuestions);

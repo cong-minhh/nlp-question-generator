@@ -77,7 +77,7 @@ class GeminiProvider extends BaseAIProvider {
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`🔄 Falling back to model: ${fallbackModel}`);
+        console.log(`Falling back to model: ${fallbackModel}`);
         
         try {
             await this.initializeModel(fallbackModel);
@@ -97,29 +97,6 @@ class GeminiProvider extends BaseAIProvider {
     }
 
     /**
-     * Sleep utility for retry logic
-     * @param {number} ms - Milliseconds to sleep
-     */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
-     * Clean AI response to extract JSON
-     * @param {string} generatedText - Raw text from AI response
-     * @returns {string} - Cleaned JSON text
-     */
-    cleanAIResponse(generatedText) {
-        let cleanedText = generatedText.trim();
-        if (cleanedText.startsWith('```json')) {
-            cleanedText = cleanedText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-        } else if (cleanedText.startsWith('```')) {
-            cleanedText = cleanedText.replace(/^```\n?/, '').replace(/\n?```$/, '');
-        }
-        return cleanedText;
-    }
-
-    /**
      * Generate questions using Gemini AI with automatic model fallback
      * @param {string} text - Input text
      * @param {Object} options - Generation options
@@ -127,20 +104,24 @@ class GeminiProvider extends BaseAIProvider {
      */
     async generateQuestions(text, options = {}) {
         const numQuestions = options.numQuestions || 10;
+        
+        // Ensure difficulty is always set to 'mixed' by default
+        const promptOptions = {
+            numQuestions,
+            bloomLevel: options.bloomLevel || 'apply',
+            difficulty: options.difficulty || 'mixed'
+        };
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
-                const prompt = this.buildPrompt(text, numQuestions);
+                const prompt = this.buildPrompt(text, promptOptions);
 
                 const result = await this.model.generateContent(prompt);
                 const response = await result.response;
                 const generatedText = response.text();
 
-                // Clean the response - remove markdown code blocks if present
-                const cleanedText = this.cleanAIResponse(generatedText);
-
-                // Parse JSON response
-                const parsedResponse = JSON.parse(cleanedText);
+                // Use robust JSON parser from base class
+                const parsedResponse = this.safeJSONParse(generatedText);
 
                 // Standardize and return response
                 const standardized = this.standardizeResponse(parsedResponse, numQuestions);
