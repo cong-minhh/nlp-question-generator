@@ -55,15 +55,7 @@ node cli/cli.js generate "Your text here"
 node cli/cli.js generate-from-file path/to/document.pdf --provider=local
 ```
 
-## 🎥 Demo
-
-Check out how easy it is to generate questions!
-
-![Demo Preview](https://via.placeholder.com/800x450.png?text=Demo+Video+Placeholder)
-
-*(Link to full demo video would go here)*
-
-## 📚 API Documentation
+## API Documentation
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
