@@ -494,7 +494,7 @@ class MultiProviderQuestionGenerator {
         const fs = require('fs');
 
         try {
-            console.log('Extracting text from files...');
+            console.log('Processing files for extraction...');
 
             // Map file paths to the structure expected by processFiles
             const files = filePaths.map(filePath => ({
@@ -505,19 +505,31 @@ class MultiProviderQuestionGenerator {
 
             const extractionResult = await processFiles(files);
             const extractedText = extractionResult.combinedText;
+            const extractedImages = extractionResult.extractedImages || [];
 
-            if (!extractedText.trim()) {
-                throw new Error('No text could be extracted from the provided files');
+            // If we have images, we can proceed even with empty text (assuming the provider supports it)
+            // But we should warn if NO content at all
+            if (!extractedText.trim() && extractedImages.length === 0) {
+                throw new Error('No text or images could be extracted from the provided files');
             }
 
-            console.log(`Extracted ${extractedText.length} characters of text`);
+            console.log(`Extracted ${extractedText.length} characters and ${extractedImages.length} images`);
 
-            const validation = this.validateInput(extractedText);
-            if (!validation.valid) {
-                throw new Error(`Invalid extracted text: ${validation.error}`);
+            // If we have images, we skip the text validation that requires 50 chars minimum
+            // Because the text might just be "Analyze this image"
+            if (extractedImages.length === 0) {
+                const validation = this.validateInput(extractedText);
+                if (!validation.valid) {
+                    throw new Error(`Invalid extracted text: ${validation.error}`);
+                }
             }
 
-            return await this.generateQuestions(validation.text, options);
+            // Construct payload: plain text OR object with text+images
+            const payload = extractedImages.length > 0 
+                ? { text: extractedText || "Analyze these images and generate questions based on them.", images: extractedImages }
+                : extractedText;
+
+            return await this.generateQuestions(payload, options);
         } catch (error) {
             console.error('File processing failed:', error.message);
             throw error;

@@ -100,37 +100,108 @@ async function extractTextFromFile(filePath, originalName) {
     }
 }
 
+
+
 /**
- * Process multiple files and extract text
+ * Extract base64 image data from an image file
+ * @param {string} filePath - Path to the image file
+ * @returns {Promise<Object>} - Image data object
+ */
+async function extractImageFromFile(filePath) {
+    try {
+        const ext = path.extname(filePath).toLowerCase();
+        let mimeType = 'image/jpeg';
+        
+        switch (ext) {
+            case '.png': mimeType = 'image/png'; break;
+            case '.webp': mimeType = 'image/webp'; break;
+            case '.gif': mimeType = 'image/gif'; break;
+            // default jpeg
+        }
+        
+        const dataBuffer = await fs.readFile(filePath);
+        const base64Data = dataBuffer.toString('base64');
+        
+        return {
+            type: 'base64',
+            mediaType: mimeType,
+            data: base64Data
+        };
+    } catch (error) {
+        console.error('Error reading image file:', error);
+        throw new Error(`Failed to read image file: ${error.message}`);
+    }
+}
+
+/**
+ * Process multiple files and extract text and images
  * @param {Array} files - Array of uploaded file objects
- * @returns {Promise<Object>} - Object with extracted texts and file information
+ * @returns {Promise<Object>} - Object with extracted texts, images, and file information
  */
 async function processFiles(files) {
     const extractedTexts = [];
+    const extractedImages = [];
     const fileInfo = [];
 
     for (const file of files) {
         try {
             console.log(`Processing: ${file.originalname} (${(file.size / 1024).toFixed(2)} KB)`);
-            const text = await extractTextFromFile(file.path, file.originalname);
+            const ext = path.extname(file.originalname).toLowerCase();
             
-            if (text && text.trim().length > 0) {
-                extractedTexts.push(text);
+            // Check if it's an image
+            if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+                const imageData = await extractImageFromFile(file.path);
+                
+                extractedImages.push({
+                    ...imageData,
+                    source: file.originalname
+                });
+                
                 fileInfo.push({
                     name: file.originalname,
                     size: file.size,
-                    textLength: text.length,
+                    type: 'image',
                     status: 'success'
                 });
-                console.log(`✓ Extracted ${text.length} characters from ${file.originalname}`);
+                console.log(`✓ Validated image: ${file.originalname}`);
+                
             } else {
-                fileInfo.push({
-                    name: file.originalname,
-                    size: file.size,
-                    status: 'warning',
-                    message: 'No text extracted'
-                });
-                console.warn(`⚠ No text extracted from ${file.originalname}`);
+                // Treat as text document
+                const text = await extractTextFromFile(file.path, file.originalname);
+                
+                // If it's a PDF, also try to extract images
+                if (ext === '.pdf') {
+                    try {
+                        const { extractImagesFromPDF } = require('../utils/pdfImageExtractor');
+                        const pdfImages = await extractImagesFromPDF(file.path);
+                        if (pdfImages.length > 0) {
+                            extractedImages.push(...pdfImages);
+                            console.log(`✓ Extracted ${pdfImages.length} images from PDF: ${file.originalname}`);
+                        }
+                    } catch (imgError) {
+                        console.warn(`Warning: Failed to extract images from PDF ${file.originalname}:`, imgError.message);
+                    }
+                }
+                
+                if (text && text.trim().length > 0) {
+                    extractedTexts.push(text);
+                    fileInfo.push({
+                        name: file.originalname,
+                        size: file.size,
+                        textLength: text.length,
+                        type: 'text',
+                        status: 'success'
+                    });
+                    console.log(`✓ Extracted ${text.length} characters from ${file.originalname}`);
+                } else {
+                    fileInfo.push({
+                        name: file.originalname,
+                        size: file.size,
+                        status: 'warning',
+                        message: 'No text extracted'
+                    });
+                    console.warn(`⚠ No text extracted from ${file.originalname}`);
+                }
             }
         } catch (error) {
             console.error(`✗ Error processing ${file.originalname}:`, error);
@@ -145,6 +216,7 @@ async function processFiles(files) {
 
     return {
         extractedTexts,
+        extractedImages,
         fileInfo,
         combinedText: extractedTexts.join('\n\n'),
         totalTextLength: extractedTexts.reduce((sum, text) => sum + text.length, 0)

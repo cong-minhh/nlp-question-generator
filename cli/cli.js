@@ -228,20 +228,44 @@ For more information: https://github.com/your-repo/nlp-question-generator
             process.exit(1);
         }
 
-        try {
-            // Extract text from files
-            const extractedText = await this.textExtractor.processFiles(validFiles);
+            try {
+            // Map file paths to object structure expected by processFiles
+            const files = validFiles.map(filePath => ({
+                path: filePath,
+                originalname: path.basename(filePath),
+                size: fs.statSync(filePath).size
+            }));
 
-            if (!extractedText.trim()) {
-                console.error('❌ No text could be extracted from the files');
+            // Extract text from files
+            const extractionResult = await this.textExtractor.processFiles(files);
+            const extractedText = extractionResult.combinedText;
+            const extractedImages = extractionResult.extractedImages || [];
+
+            if (!extractedText.trim() && extractedImages.length === 0) {
+                console.error('❌ No text or images could be extracted from the files');
                 process.exit(1);
             }
 
-            console.log(`Extracted text length: ${extractedText.length} characters`);
+            console.log(`Extracted: ${extractedText.length} extracted characters, ${extractedImages.length} images`);
             console.log('Generating questions...\n');
 
+            // Construct payload: plain text OR object with text+images
+            const payload = extractedImages.length > 0 
+                ? { text: extractedText || "Analyze these images and generate questions based on them.", images: extractedImages }
+                : extractedText;
+
+            // Switch provider if specified
+            if (options.provider) {
+                if (this.providerManager.hasProvider(options.provider)) {
+                    this.providerManager.switchProvider(options.provider);
+                } else {
+                    console.error(`❌ Provider '${options.provider}' not found or not configured`);
+                    process.exit(1);
+                }
+            }
+
             // Generate questions
-            const result = await this.providerManager.generateQuestions(extractedText, options);
+            const result = await this.providerManager.generateQuestions(payload, options);
             this.displayResults(result);
 
         } catch (error) {

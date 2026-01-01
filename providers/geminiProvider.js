@@ -114,9 +114,37 @@ class GeminiProvider extends BaseAIProvider {
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
-                const prompt = this.buildPrompt(text, promptOptions);
+                // Handle multimodal input
+                let promptParts = [];
+                let inputText = text;
 
-                const result = await this.model.generateContent(prompt);
+                // Check if input is multimodal object { text, images }
+                if (typeof text === 'object' && text.text) {
+                    inputText = text.text;
+                    
+                    // Add text first
+                    const systemPrompt = this.buildPrompt(inputText, promptOptions);
+                    promptParts.push(systemPrompt);
+                    
+                    // Add images if present
+                    if (text.images && Array.isArray(text.images)) {
+                        text.images.forEach(img => {
+                            promptParts.push({
+                                inlineData: {
+                                    data: img.data,
+                                    mimeType: img.mediaType
+                                }
+                            });
+                        });
+                        console.log(`Adding ${text.images.length} images to Gemini prompt`);
+                    }
+                } else {
+                    // Legacy string input
+                    const systemPrompt = this.buildPrompt(inputText, promptOptions);
+                    promptParts.push(systemPrompt);
+                }
+
+                const result = await this.model.generateContent(promptParts);
                 const response = await result.response;
                 const generatedText = response.text();
 

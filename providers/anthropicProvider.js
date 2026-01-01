@@ -155,7 +155,38 @@ class AnthropicProvider extends BaseAIProvider {
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
-                const messages = this.buildClaudePrompt(text, promptOptions);
+                let messages = [];
+                let inputText = text;
+
+                // Handle multimodal input
+                if (typeof text === 'object' && text.text) {
+                    inputText = text.text;
+                    const systemPrompt = this.buildPrompt(inputText, promptOptions);
+                    
+                    const content = [];
+                    // Add text first
+                    content.push({ type: 'text', text: systemPrompt });
+                    
+                    // Add images if present
+                    if (text.images && Array.isArray(text.images)) {
+                        text.images.forEach(img => {
+                            content.push({
+                                type: 'image',
+                                source: {
+                                    type: 'base64',
+                                    media_type: img.mediaType,
+                                    data: img.data
+                                }
+                            });
+                        });
+                        console.log(`Adding ${text.images.length} images to Anthropic prompt`);
+                    }
+                    
+                    messages = [{ role: 'user', content: content }];
+                } else {
+                    // Legacy string input
+                    messages = this.buildClaudePrompt(inputText, promptOptions);
+                }
 
                 const response = await this.client.messages.create({
                     model: this.currentModel,

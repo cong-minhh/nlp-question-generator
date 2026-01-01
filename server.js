@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const path = require('path');
-const { apiReference } = require('@scalar/express-api-reference');
+
 const apiRoutes = require('./routes/api');
 const { ensureUploadsDirectory } = require('./utils/fileUtils');
 const ProviderManager = require('./providers/providerManager');
@@ -22,18 +22,7 @@ app.use('/api', apiRoutes);
 // Serve static files for streaming test page
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
-// Scalar API Documentation
-app.use(
-    '/docs',
-    apiReference({
-        spec: {
-            url: '/openapi.json',
-        },
-        theme: 'purple',
-        layout: 'modern',
-        darkMode: true,
-    })
-);
+
 
 // Serve OpenAPI spec
 app.get('/openapi.json', (req, res) => {
@@ -78,6 +67,24 @@ async function initializeServer() {
         // Display startup banner
         cliUI.printBanner();
         // cliUI.showSection('Initializing Multi-Provider AI System');
+
+        // Dynamically import Scalar API Documentation (ESM only package)
+        try {
+            const { apiReference } = await import('@scalar/express-api-reference');
+            app.use(
+                '/docs',
+                apiReference({
+                    spec: {
+                        url: '/openapi.json',
+                    },
+                    theme: 'purple',
+                    layout: 'modern',
+                    darkMode: true,
+                })
+            );
+        } catch (err) {
+            console.warn('Failed to load API documentation:', err.message);
+        }
 
         // Initialize provider manager
         const providerManager = new ProviderManager();

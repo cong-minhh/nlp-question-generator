@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 /**
  * In-Memory Job Queue with SQLite Persistence
@@ -63,7 +63,7 @@ class JobQueue {
      * @returns {Promise<string>} - Job ID
      */
     async createJob(data) {
-        const jobId = uuidv4();
+        const jobId = crypto.randomUUID();
         const job = {
             id: jobId,
             status: 'pending',
