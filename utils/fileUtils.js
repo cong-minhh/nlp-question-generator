@@ -94,7 +94,7 @@ function createErrorResponse(message, statusCode = 500) {
  * @returns {Object} - Success response object
  */
 function createSuccessResponse(data, metadata = null) {
-    const response = { ...data };
+    const response = { success: true, ...data };
     if (metadata) {
         response.metadata = metadata;
     }

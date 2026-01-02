@@ -3,9 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
-const { processPdf } = require('../utils/processors/PdfProcessor');
-const { processDocx } = require('../utils/processors/DocxProcessor');
-const { processPptx } = require('../utils/processors/PptxProcessor');
+const fileProcessingService = require('../services/FileProcessingService');
 
 // Multer setup for temporary uploads
 const upload = multer({ dest: 'uploads/temp/' });
@@ -21,25 +19,9 @@ router.post('/process', upload.single('file'), async (req, res, next) => {
         }
 
         const filePath = req.file.path;
-        const ext = path.extname(req.file.originalname).toLowerCase();
-        let result = {};
-
-        console.log(`[Debug] Processing ${req.file.originalname} (${ext})`);
-
+        
         try {
-            switch (ext) {
-                case '.pdf':
-                    result = await processPdf(filePath);
-                    break;
-                case '.docx':
-                    result = await processDocx(filePath);
-                    break;
-                case '.pptx':
-                    result = await processPptx(filePath);
-                    break;
-                default:
-                    throw new Error('Unsupported file type for debug');
-            }
+            const result = await fileProcessingService.processFile(filePath, req.file.originalname);
 
             // Cleanup temp file
             await fs.unlink(filePath).catch(() => {});
@@ -47,7 +29,7 @@ router.post('/process', upload.single('file'), async (req, res, next) => {
             res.json({
                 success: true,
                 filename: req.file.originalname,
-                pages: result.pages || [] // Ensure pages array exists
+                pages: result.pages || [] 
             });
 
         } catch (procError) {

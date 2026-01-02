@@ -1,6 +1,6 @@
 const express = require('express');
 const upload = require('../config/upload');
-const { processFiles } = require('../services/textExtractor');
+const fileProcessingService = require('../services/FileProcessingService');
 const { cleanupFiles } = require('../utils/fileUtils');
 const GeminiQuestionGenerator = require('../services/questionGenerator');
 const { authenticate, optionalAuth } = require('../middleware/auth');
@@ -86,7 +86,7 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         
         console.log(`Processing with options: pageStart=${pageStart}, pageEnd=${pageEnd}`);
         
-        const { extractedTexts, extractedImages, fileInfo, combinedText, totalTextLength } = await processFiles(uploadedFiles, { pageStart, pageEnd });
+        const { extractedTexts, extractedImages, fileInfo, combinedText, totalTextLength } = await fileProcessingService.processFiles(uploadedFiles, { pageStart, pageEnd });
 
         // Cleanup uploaded files
         await cleanupFiles(uploadedFiles.map(f => f.path));

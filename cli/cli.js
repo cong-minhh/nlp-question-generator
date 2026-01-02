@@ -6,7 +6,7 @@ const process = require('process');
 // Get the package root directory
 const packageRoot = path.join(__dirname, '..');
 const ProviderManager = require(path.join(packageRoot, 'providers', 'providerManager'));
-const TextExtractor = require(path.join(packageRoot, 'services', 'textExtractor'));
+const fileProcessingService = require(path.join(packageRoot, 'services', 'FileProcessingService'));
 const ConfigManager = require(path.join(packageRoot, 'cli', 'config'));
 const { ensureUploadsDirectory, cleanupFiles } = require(path.join(packageRoot, 'utils', 'fileUtils'));
 const cliUI = require(path.join(packageRoot, 'cli', 'ascii'));
@@ -17,7 +17,7 @@ const cliUI = require(path.join(packageRoot, 'cli', 'ascii'));
 class NLPQGCLI {
     constructor() {
         this.providerManager = null;
-        this.textExtractor = null;
+        this.fileProcessingService = null;
         this.config = null;
         this.commands = {
             'config': this.configCommand,
@@ -42,8 +42,8 @@ class NLPQGCLI {
         this.providerManager = new ProviderManager();
         await this.providerManager.initialize();
 
-        // Initialize text extractor functions (it's a module, not a class)
-        this.textExtractor = TextExtractor;
+        // Initialize file processor
+        this.fileProcessingService = fileProcessingService;
 
         // Load configuration
         this.config = this.loadCLIConfig();
@@ -237,7 +237,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
             }));
 
             // Extract text from files
-            const extractionResult = await this.textExtractor.processFiles(files);
+            const extractionResult = await this.fileProcessingService.processFiles(files);
             const extractedText = extractionResult.combinedText;
             const extractedImages = extractionResult.extractedImages || [];
 
