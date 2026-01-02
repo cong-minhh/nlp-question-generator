@@ -26,6 +26,10 @@
     {
       "name": "System",
       "description": "System health and information"
+    },
+    {
+      "name": "Documents",
+      "description": "Stateful document processing for granular content selection"
     }
   ],
   "paths": {
@@ -116,6 +120,16 @@
                     "minimum": 1,
                     "maximum": 50,
                     "default": 10
+                  },
+                  "page_start": {
+                    "type": "integer",
+                    "description": "Start page for PDF extraction (1-based)",
+                    "minimum": 1
+                  },
+                  "page_end": {
+                    "type": "integer",
+                    "description": "End page for PDF extraction (inclusive)",
+                    "minimum": 1
                   }
                 }
               }
@@ -213,7 +227,7 @@
         }
       }
     },
-    "/api": {
+    "api": {
       "get": {
         "tags": ["System"],
         "summary": "API documentation",
@@ -221,6 +235,103 @@
         "responses": {
           "200": {
             "description": "API documentation"
+          }
+        }
+      }
+    },
+    "/api/documents/inspect": {
+      "post": {
+        "tags": ["Documents"],
+        "summary": "Inspect document content",
+        "description": "Upload a document to extract structure (slides, images) for granular selection. Returns a docId for subsequent generation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file to inspect (PDF, PPTX, DOCX)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Document inspected successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentInspectionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/generate": {
+      "post": {
+        "tags": ["Documents"],
+        "summary": "Generate questions from selected content",
+        "description": "Generate questions using a previously inspected document ID and a content filter.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["docId"],
+                "properties": {
+                  "docId": {
+                    "type": "string",
+                    "description": "The ID returned from /inspect",
+                    "example": "123e4567-e89b-12d3-a456-426614174000"
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "includeSlides": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "List of slide/page numbers to include (1-based)"
+                      },
+                      "includeImages": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "List of image source identifiers to include"
+                      },
+                      "numQuestions": {
+                         "type": "integer",
+                         "default": 10
+                      },
+                      "difficulty": {
+                          "type": "string",
+                          "enum": ["easy", "medium", "hard", "mixed"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Questions generated successfully",
+            "content": {
+               "application/json": {
+                "schema": {
+                   "$ref": "#/components/schemas/QuestionResponse"
+                }
+               }
+            }
           }
         }
       }
@@ -367,6 +478,35 @@
                 },
                 "isCurrent": {
                   "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "DocumentInspectionResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "docId": { "type": "string", "description": "Unique identifier for the uploaded document state" },
+          "filename": { "type": "string" },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "page": { "type": "integer" },
+                "text": { "type": "string" },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "source": { "type": "string" },
+                      "mediaType": { "type": "string" },
+                      "data": { "type": "string", "description": "Base64 encoded image data" }
+                    }
+                  }
                 }
               }
             }

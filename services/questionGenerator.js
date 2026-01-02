@@ -106,9 +106,11 @@ class MultiProviderQuestionGenerator {
 
         const numQuestions = options.numQuestions || 10;
 
-        // Check if text is too large for model context (rough estimate: 1 char ≈ 0.25 tokens)
-        // Kimi models have 8K token limit, so max ~20K characters for input (leaving room for output)
-        const MAX_TEXT_CHARS = 20000;
+        // Check if text is too large for model context
+        // Default to 1,000,000 characters (~250k tokens) if not set in env
+        // This is safe for Gemini 1.5 but prevents massive memory abuse
+        const MAX_TEXT_CHARS = parseInt(process.env.MAX_TEXT_LENGTH) || 1000000;
+        
         if (text.length > MAX_TEXT_CHARS) {
             console.warn(`⚠ Text too large (${text.length} chars). Truncating to ${MAX_TEXT_CHARS} chars.`);
             text = text.substring(0, MAX_TEXT_CHARS);
@@ -475,8 +477,9 @@ class MultiProviderQuestionGenerator {
             return { valid: false, error: 'Text input must be at least 50 characters long' };
         }
 
-        if (trimmed.length > 50000) {
-            return { valid: false, error: 'Text input is too long (max 50,000 characters)' };
+        const MAX_TEXT_CHARS = parseInt(process.env.MAX_TEXT_LENGTH) || 1000000;
+        if (trimmed.length > MAX_TEXT_CHARS) {
+            return { valid: false, error: `Text input is too long (max ${MAX_TEXT_CHARS} characters)` };
         }
 
         return { valid: true, text: trimmed };

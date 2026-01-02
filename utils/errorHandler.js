@@ -198,13 +198,13 @@ class ErrorHandler {
      * @param {Function} next - Express next function
      */
     static expressErrorHandler(error, req, res, next) {
-        this.logError(error, {
+        ErrorHandler.logError(error, {
             path: req.path,
             method: req.method,
             ip: req.ip
         });
 
-        const response = this.createErrorResponse(error, {
+        const response = ErrorHandler.createErrorResponse(error, {
             path: req.path
         });
 

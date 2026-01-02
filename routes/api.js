@@ -81,23 +81,36 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         console.log(`Processing ${uploadedFiles.length} file(s)...`);
 
         // Process files and extract text
-        const { extractedTexts, fileInfo, combinedText, totalTextLength } = await processFiles(uploadedFiles);
+        const pageStart = req.body.page_start || req.body.pageStart ? parseInt(req.body.page_start || req.body.pageStart) : undefined;
+        const pageEnd = req.body.page_end || req.body.pageEnd ? parseInt(req.body.page_end || req.body.pageEnd) : undefined;
+        
+        console.log(`Processing with options: pageStart=${pageStart}, pageEnd=${pageEnd}`);
+        
+        const { extractedTexts, extractedImages, fileInfo, combinedText, totalTextLength } = await processFiles(uploadedFiles, { pageStart, pageEnd });
 
         // Cleanup uploaded files
         await cleanupFiles(uploadedFiles.map(f => f.path));
 
-        // Check if we have any text
-        if (extractedTexts.length === 0) {
+        // Check if we have any text or images
+        if (extractedTexts.length === 0 && extractedImages.length === 0) {
             return res.status(400).json(createErrorResponse(
-                'No text extracted. Could not extract text from any of the uploaded files',
+                'No content extracted. Could not extract text or images from any of the uploaded files',
                 400
             ));
         }
 
         console.log(`Total extracted text: ${combinedText.length} characters from ${extractedTexts.length} file(s)`);
+        if (extractedImages.length > 0) {
+            console.log(`Total extracted images: ${extractedImages.length}`);
+        }
 
         // Generate questions
-        const result = await questionGenerator.generateQuestions(combinedText, { numQuestions: numQuestionsValidation.value });
+        // Construct payload: plain text OR object with text+images
+        const payload = extractedImages.length > 0 
+            ? { text: combinedText || "Analyze these images and generate questions based on them.", images: extractedImages }
+            : combinedText;
+
+        const result = await questionGenerator.generateQuestions(payload, { numQuestions: numQuestionsValidation.value });
 
         // Return response with file info
         res.json(createSuccessResponse(result, {
@@ -239,7 +252,9 @@ router.get('/', (req, res) => {
                 contentType: 'multipart/form-data',
                 body: {
                     files: 'file[] (required) - One or more files to extract text from (max 10 files, 50MB each)',
-                    num_questions: 'number (optional) - Number of questions to generate (default: 10, max: 50)'
+                    num_questions: 'number (optional) - Number of questions to generate (default: 10, max: 50)',
+                    page_start: 'number (optional) - Start page for PDF extraction (1-based)',
+                    page_end: 'number (optional) - End page for PDF extraction (inclusive)'
                 },
                 supportedFormats: ['PDF', 'DOC', 'DOCX', 'PPT', 'PPTX', 'TXT'],
                 features: [

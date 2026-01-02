@@ -210,9 +210,120 @@ class GeminiProvider extends BaseAIProvider {
     }
 
     /**
+     * Generate raw response (generic text generation)
+     * @param {string} text - Prompt text
+     * @param {Array} images - Optional array of images {data, mediaType}
+     * @returns {Promise<string>} - Generated text
+     */
+    async generateResponse(inputText, images = []) {
+        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+            try {
+                let promptParts = [];
+                
+                // Add text
+                promptParts.push(inputText);
+
+                // Add images
+                if (images && Array.isArray(images)) {
+                    images.forEach(img => {
+                        promptParts.push({
+                            inlineData: {
+                                data: img.data,
+                                mimeType: img.mediaType
+                            }
+                        });
+                    });
+                    console.log(`Adding ${images.length} images to Gemini generic prompt`);
+                }
+
+                const result = await this.model.generateContent(promptParts);
+                const response = await result.response;
+                return response.text();
+
+            } catch (error) {
+                const isLastAttempt = attempt === this.maxRetries;
+                
+                if (error.message && error.message.includes('404')) {
+                    console.warn(`⚠ Model ${this.currentModel} not available (404)`);
+                     const fallbackSuccess = await this.tryFallbackModel();
+                    if (fallbackSuccess) {
+                        attempt = 0; continue;
+                    }
+                }
+                
+                 if (error.message && error.message.includes('503')) {
+                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
+                    if (!isLastAttempt) {
+                        await this.sleep(delay);
+                        continue;
+                    }
+                }
+
+                if (isLastAttempt) throw new Error(`Gemini generation failed: ${error.message}`);
+            }
+        }
+    }
+
+    /**
+     * Generate raw response (generic text generation)
+     * @param {string} text - Prompt text
+     * @param {Array} images - Optional array of images {data, mediaType}
+     * @returns {Promise<string>} - Generated text
+     */
+    async generateResponse(inputText, images = []) {
+        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+            try {
+                let promptParts = [];
+                
+                // Add text
+                promptParts.push(inputText);
+
+                // Add images
+                if (images && Array.isArray(images)) {
+                    images.forEach(img => {
+                        promptParts.push({
+                            inlineData: {
+                                data: img.data,
+                                mimeType: img.mediaType
+                            }
+                        });
+                    });
+                    console.log(`Adding ${images.length} images to Gemini generic prompt`);
+                }
+
+                const result = await this.model.generateContent(promptParts);
+                const response = await result.response;
+                return response.text();
+
+            } catch (error) {
+                const isLastAttempt = attempt === this.maxRetries;
+                
+                if (error.message && error.message.includes('404')) {
+                    console.warn(`⚠ Model ${this.currentModel} not available (404)`);
+                     const fallbackSuccess = await this.tryFallbackModel();
+                    if (fallbackSuccess) {
+                        attempt = 0; continue;
+                    }
+                }
+                
+                 if (error.message && error.message.includes('503')) {
+                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
+                    if (!isLastAttempt) {
+                        await this.sleep(delay);
+                        continue;
+                    }
+                }
+
+                if (isLastAttempt) throw new Error(`Gemini generation failed: ${error.message}`);
+            }
+        }
+    }
+
+    /**
      * Test Gemini connection with automatic fallback
      * @returns {Promise<Object>} - Test result
      */
+
     async testConnection() {
         try {
             await this.initialize();

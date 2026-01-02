@@ -1,99 +1,46 @@
 const fs = require('fs').promises;
 const path = require('path');
-const pdfParse = require('pdf-parse');
-const mammoth = require('mammoth');
-const officeParser = require('officeparser');
+const officeParser = require('officeparser'); // Keep for generic fallback
+
+// Unified Processors
+const { processPdf } = require('../utils/processors/PdfProcessor');
+const { processPptx } = require('../utils/processors/PptxProcessor');
+const { processDocx } = require('../utils/processors/DocxProcessor');
 
 /**
- * Extract text from a PDF file
- * @param {string} filePath - Path to the PDF file
- * @returns {Promise<string>} - Extracted text
+ * Extract text (and ignore images for backward compat/legacy calls)
+ * Note: New code should prefer using specific processors directly if it wants images.
+ * This function persists for simple "just give me text" calls.
  */
-async function extractTextFromPDF(filePath) {
-    try {
-        const dataBuffer = await fs.readFile(filePath);
-        const data = await pdfParse(dataBuffer);
-        return data.text;
-    } catch (error) {
-        console.error('Error extracting text from PDF:', error);
-        throw new Error(`Failed to extract text from PDF: ${error.message}`);
-    }
-}
-
-/**
- * Extract text from a DOCX file
- * @param {string} filePath - Path to the DOCX file
- * @returns {Promise<string>} - Extracted text
- */
-async function extractTextFromDOCX(filePath) {
-    try {
-        const result = await mammoth.extractRawText({ path: filePath });
-        return result.value;
-    } catch (error) {
-        console.error('Error extracting text from DOCX:', error);
-        throw new Error(`Failed to extract text from DOCX: ${error.message}`);
-    }
-}
-
-/**
- * Extract text from PPTX, DOC, or other Office files
- * @param {string} filePath - Path to the file
- * @returns {Promise<string>} - Extracted text
- */
-async function extractTextFromOffice(filePath) {
-    try {
-        const text = await officeParser.parseOfficeAsync(filePath);
-        return text;
-    } catch (error) {
-        console.error('Error extracting text from Office file:', error);
-        throw new Error(`Failed to extract text from Office file: ${error.message}`);
-    }
-}
-
-/**
- * Extract text from a plain text file
- * @param {string} filePath - Path to the text file
- * @returns {Promise<string>} - File contents
- */
-async function extractTextFromTXT(filePath) {
-    try {
-        return await fs.readFile(filePath, 'utf-8');
-    } catch (error) {
-        console.error('Error reading text file:', error);
-        throw new Error(`Failed to read text file: ${error.message}`);
-    }
-}
-
-/**
- * Extract text from any supported file format
- * @param {string} filePath - Path to the file
- * @param {string} originalName - Original filename
- * @returns {Promise<string>} - Extracted text
- */
-async function extractTextFromFile(filePath, originalName) {
+async function extractTextFromFile(filePath, originalName, options = {}) {
     const ext = path.extname(originalName).toLowerCase();
     
     console.log(`Extracting text from ${originalName} (${ext})`);
     
     try {
+        let result = { text: '', images: [] };
+
         switch (ext) {
             case '.pdf':
-                return await extractTextFromPDF(filePath);
+                result = await processPdf(filePath, options);
+                return result.text;
             
             case '.docx':
-                return await extractTextFromDOCX(filePath);
+                result = await processDocx(filePath);
+                return result.text;
+            
+            case '.pptx':
+                result = await processPptx(filePath, options);
+                return result.text;
+
+            case '.txt':
+                return await fs.readFile(filePath, 'utf-8');
             
             case '.doc':
-            case '.pptx':
             case '.ppt':
-                return await extractTextFromOffice(filePath);
-            
-            case '.txt':
-                return await extractTextFromTXT(filePath);
-            
             default:
-                // Try office parser as fallback
-                return await extractTextFromOffice(filePath);
+                // Fallback for older formats or unsupported types
+                return await officeParser.parseOfficeAsync(filePath);
         }
     } catch (error) {
         throw new Error(`Failed to extract text from ${originalName}: ${error.message}`);
@@ -101,11 +48,8 @@ async function extractTextFromFile(filePath, originalName) {
 }
 
 
-
 /**
  * Extract base64 image data from an image file
- * @param {string} filePath - Path to the image file
- * @returns {Promise<Object>} - Image data object
  */
 async function extractImageFromFile(filePath) {
     try {
@@ -135,10 +79,9 @@ async function extractImageFromFile(filePath) {
 
 /**
  * Process multiple files and extract text and images
- * @param {Array} files - Array of uploaded file objects
- * @returns {Promise<Object>} - Object with extracted texts, images, and file information
+ * Refactored to use Unified Processors.
  */
-async function processFiles(files) {
+async function processFiles(files, options = {}) {
     const extractedTexts = [];
     const extractedImages = [];
     const fileInfo = [];
@@ -148,7 +91,7 @@ async function processFiles(files) {
             console.log(`Processing: ${file.originalname} (${(file.size / 1024).toFixed(2)} KB)`);
             const ext = path.extname(file.originalname).toLowerCase();
             
-            // Check if it's an image
+            // Check if it's an image file
             if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
                 const imageData = await extractImageFromFile(file.path);
                 
@@ -166,41 +109,66 @@ async function processFiles(files) {
                 console.log(`✓ Validated image: ${file.originalname}`);
                 
             } else {
-                // Treat as text document
-                const text = await extractTextFromFile(file.path, file.originalname);
-                
-                // If it's a PDF, also try to extract images
-                if (ext === '.pdf') {
-                    try {
-                        const { extractImagesFromPDF } = require('../utils/pdfImageExtractor');
-                        const pdfImages = await extractImagesFromPDF(file.path);
-                        if (pdfImages.length > 0) {
-                            extractedImages.push(...pdfImages);
-                            console.log(`✓ Extracted ${pdfImages.length} images from PDF: ${file.originalname}`);
-                        }
-                    } catch (imgError) {
-                        console.warn(`Warning: Failed to extract images from PDF ${file.originalname}:`, imgError.message);
+                // Document Processing
+                let text = '';
+                let images = [];
+                let processorName = 'legacy';
+
+                try {
+                    if (ext === '.pdf') {
+                        const result = await processPdf(file.path, options);
+                        text = result.text;
+                        images = result.images;
+                        processorName = 'PDF';
+                    } else if (ext === '.pptx') {
+                        const result = await processPptx(file.path, options);
+                        text = result.text;
+                        images = result.images;
+                        processorName = 'PPTX';
+                    } else if (ext === '.docx') {
+                        const result = await processDocx(file.path);
+                        text = result.text;
+                        images = result.images;
+                        processorName = 'DOCX';
+                    } else if (ext === '.txt') {
+                        text = await fs.readFile(file.path, 'utf-8');
+                        processorName = 'TXT';
+                    } else {
+                        // Fallback
+                         text = await officeParser.parseOfficeAsync(file.path);
+                         processorName = 'Fallback';
                     }
-                }
-                
-                if (text && text.trim().length > 0) {
-                    extractedTexts.push(text);
-                    fileInfo.push({
-                        name: file.originalname,
-                        size: file.size,
-                        textLength: text.length,
-                        type: 'text',
-                        status: 'success'
-                    });
-                    console.log(`✓ Extracted ${text.length} characters from ${file.originalname}`);
-                } else {
-                    fileInfo.push({
-                        name: file.originalname,
-                        size: file.size,
-                        status: 'warning',
-                        message: 'No text extracted'
-                    });
-                    console.warn(`⚠ No text extracted from ${file.originalname}`);
+
+                    // Collect Images
+                    if (images && images.length > 0) {
+                        extractedImages.push(...images);
+                        console.log(`✓ Extracted ${images.length} images from ${processorName}: ${file.originalname}`);
+                    }
+
+                    // Collect Text
+                    if (text && text.trim().length > 0) {
+                        extractedTexts.push(text);
+                        fileInfo.push({
+                            name: file.originalname,
+                            size: file.size,
+                            textLength: text.length,
+                            type: 'text',
+                            status: 'success'
+                        });
+                        console.log(`✓ Extracted ${text.length} characters from ${file.originalname}`);
+                    } else {
+                        fileInfo.push({
+                            name: file.originalname,
+                            size: file.size,
+                            status: 'warning',
+                            message: 'No text extracted'
+                        });
+                        console.warn(`⚠ No text extracted from ${file.originalname}`);
+                    }
+
+                } catch (docErr) {
+                     console.error(`Failed to process document ${file.originalname}:`, docErr.message);
+                     throw docErr; // Re-throw to catch block below
                 }
             }
         } catch (error) {
@@ -224,6 +192,6 @@ async function processFiles(files) {
 }
 
 module.exports = {
-    extractTextFromFile,
+    extractTextFromFile, // Exported for backward compatibility if used elsewhere
     processFiles
 };

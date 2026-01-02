@@ -14,6 +14,7 @@
     "test": "node cli/cli.js test",
     "cli": "node cli/cli.js",
     "generate-key": "node utils/generateApiKey.js",
+    "setup:python": "services/python/venv/bin/pip install -r services/python/requirements.txt",
     "build": "echo 'No build step required'"
   },
   "keywords": [
@@ -27,9 +28,12 @@
   "dependencies": {
     "@google/generative-ai": "^0.2.1",
     "@scalar/express-api-reference": "^0.8.24",
+    "adm-zip": "^0.5.16",
+    "axios": "^1.13.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "form-data": "^4.0.5",
     "mammoth": "^1.6.0",
     "multer": "^1.4.5-lts.1",
     "officeparser": "^4.1.1",

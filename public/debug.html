@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Extraction Debugger</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+        background: #f0f2f5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        margin-top: 0;
+      }
+      .controls {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      button {
+        padding: 10px 20px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f8f9fa;
+      }
+      th.col-slide {
+        width: 80px;
+      }
+      th.col-text {
+        width: 50%;
+      }
+
+      .img-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .img-item {
+        width: 100px;
+        height: 100px;
+        object-fit: contain;
+        border: 1px solid #eee;
+        padding: 2px;
+      }
+      .text-content {
+        white-space: pre-wrap;
+        font-family: monospace;
+        font-size: 13px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      #ai-result {
+        margin-top: 20px;
+        padding: 15px;
+        background: #e8f5e9;
+        border: 1px solid #c8e6c9;
+        border-radius: 4px;
+        display: none;
+      }
+      .error {
+        color: red;
+        margin-top: 10px;
+      }
+
+      .loading {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Document Extraction Debugger</h1>
+
+      <div class="controls">
+        <input type="file" id="fileInput" accept=".pdf,.docx,.pptx" />
+        <button onclick="processFile()" id="btnProcess">Process File</button>
+        <span id="status"></span>
+      </div>
+
+      <div id="resultArea" style="display: none">
+        <div
+          class="controls"
+          style="
+            justify-content: space-between;
+            background: #f8f9fa;
+            padding: 10px;
+          "
+        >
+          <strong>Verification</strong>
+          <div>
+            <button
+              onclick="verifyWithAI()"
+              id="btnVerify"
+              style="background: #28a745"
+            >
+              Verify with AI (Count Images)
+            </button>
+          </div>
+        </div>
+
+        <div id="ai-result">
+          <h3>AI Verification Result</h3>
+          <pre id="ai-output"></pre>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th class="col-slide">Slide/Page</th>
+              <th class="col-text">Extracted Text</th>
+              <th>Extracted Images</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      let currentData = null;
+
+      async function processFile() {
+        const fileInput = document.getElementById("fileInput");
+        const file = fileInput.files[0];
+        if (!file) {
+          alert("Please select a file");
+          return;
+        }
+
+        setLoading(true);
+        document.getElementById("resultArea").style.display = "none";
+        document.getElementById("ai-result").style.display = "none";
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+          const res = await fetch("/api/debug/process", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Processing failed");
+
+          currentData = data;
+          renderTable(data.pages);
+          document.getElementById("resultArea").style.display = "block";
+        } catch (err) {
+          document.getElementById("status").innerText = "Error: " + err.message;
+          document.getElementById("status").className = "error";
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      function renderTable(pages) {
+        const tbody = document.getElementById("tableBody");
+        tbody.innerHTML = "";
+
+        pages.forEach((p) => {
+          const tr = document.createElement("tr");
+
+          // Slide/Num
+          const tdNum = document.createElement("td");
+          tdNum.innerText = p.page;
+          tr.appendChild(tdNum);
+
+          // Text
+          const tdText = document.createElement("td");
+          const divText = document.createElement("div");
+          divText.className = "text-content";
+          divText.innerText = p.text || "(No Text)";
+          tdText.appendChild(divText);
+          tr.appendChild(tdText);
+
+          // Images
+          const tdImg = document.createElement("td");
+          const divGrid = document.createElement("div");
+          divGrid.className = "img-grid";
+
+          if (p.images && p.images.length > 0) {
+            p.images.forEach((img) => {
+              const imgEl = document.createElement("img");
+              // img.data is base64 string
+              imgEl.src = `data:${img.mediaType};base64,${img.data}`;
+              imgEl.className = "img-item";
+              imgEl.title = img.source;
+              divGrid.appendChild(imgEl);
+            });
+          } else {
+            divGrid.innerHTML =
+              '<span style="color:#999;font-size:12px;">No Images</span>';
+          }
+
+          tdImg.appendChild(divGrid);
+          tr.appendChild(tdImg);
+
+          tbody.appendChild(tr);
+        });
+      }
+
+      async function verifyWithAI() {
+        if (!currentData || !currentData.pages) return;
+
+        const btn = document.getElementById("btnVerify");
+        const originalText = btn.innerText;
+        btn.innerText = "Asking AI...";
+        btn.disabled = true;
+
+        try {
+          // Aggregate all images for the "Verify" prompt
+          // In a real scenario, you probably want to verify per slide, or the whole doc.
+          // The request was "simulate adding those texts and images to the prompt".
+          // I'll send ALL images from the doc to simulate the full context.
+
+          const allImages = [];
+          currentData.pages.forEach((p) => {
+            if (p.images) allImages.push(...p.images);
+          });
+
+          if (allImages.length === 0) {
+            alert("No images to verify!");
+            return;
+          }
+
+          // Call API
+          const res = await fetch("/api/debug/verify-ai", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: "Debug Context",
+              images: allImages,
+            }),
+          });
+
+          const text = await res.text();
+          let result;
+          try {
+              result = JSON.parse(text);
+          } catch (e) {
+              throw new Error(`Server Error: ${text.substring(0, 200)}...`);
+          }
+          
+          if (!res.ok) throw new Error(result.error || result.message || 'Verification failed');
+
+          const aiResDiv = document.getElementById("ai-result");
+          const aiOutput = document.getElementById("ai-output");
+
+          aiResDiv.style.display = "block";
+          aiOutput.innerText = `Provider: ${result.provider}\n\n${result.response}`;
+        } catch (err) {
+          alert("Verification failed: " + err.message);
+        } finally {
+          btn.innerText = originalText;
+          btn.disabled = false;
+        }
+      }
+
+      function setLoading(isLoading) {
+        const btn = document.getElementById("btnProcess");
+        const status = document.getElementById("status");
+        if (isLoading) {
+          btn.disabled = true;
+          btn.innerText = "Processing...";
+          status.innerText = "";
+          document.body.classList.add("loading");
+        } else {
+          btn.disabled = false;
+          btn.innerText = "Process File";
+          document.body.classList.remove("loading");
+        }
+      }
+    </script>
+  </body>
+</html>
