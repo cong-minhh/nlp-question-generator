@@ -106,6 +106,11 @@ class MultiProviderQuestionGenerator {
 
         const numQuestions = options.numQuestions || 10;
 
+        // Advanced Distribution Logic
+        if (options.difficultyDistribution || options.bloomDistribution) {
+            return this.generateDistributedQuestions(text, options);
+        }
+
         // Check if text is too large for model context
         // Default to 1,000,000 characters (~250k tokens) if not set in env
         // This is safe for Gemini 1.5 but prevents massive memory abuse
@@ -343,6 +348,88 @@ class MultiProviderQuestionGenerator {
             console.error('Question generation failed:', error.message);
             throw error;
         }
+    }
+    /**
+     * Generate questions with specific distributions
+     */
+    async generateDistributedQuestions(text, options) {
+        const numQuestions = options.numQuestions || 10;
+        const diffDist = options.difficultyDistribution || {};
+        const bloomDist = options.bloomDistribution || {};
+
+        // 1. Create Execution Plan
+        // We map N slots to (Difficulty, Bloom) pairs
+        let slots = [];
+        for (let i = 0; i < numQuestions; i++) slots.push({});
+
+        // Fill Difficulty
+        if (options.difficultyDistribution) {
+            let current = 0;
+            for (const [key, count] of Object.entries(diffDist)) {
+                for (let c = 0; c < count; c++) {
+                    if (slots[current]) slots[current].difficulty = key;
+                    current++;
+                }
+            }
+        }
+
+        // Fill Bloom (Shuffle first to distribute evenly across difficulties)
+        if (options.bloomDistribution) {
+            let bloomList = [];
+            for (const [key, count] of Object.entries(bloomDist)) {
+                for (let c = 0; c < count; c++) bloomList.push(key);
+            }
+            // Shuffle bloom list
+            bloomList.sort(() => Math.random() - 0.5);
+
+            bloomList.forEach((bloom, index) => {
+                if (slots[index]) slots[index].bloomLevel = bloom;
+            });
+        }
+
+        // 2. Group by unique configuration for prompt construction
+        const distributionPlan = {
+            total: numQuestions,
+            breakdown: []
+        };
+        
+        const counts = {};
+        slots.forEach(slot => {
+            const diff = slot.difficulty || options.difficulty || 'medium';
+            const bloom = slot.bloomLevel || options.bloomLevel || 'apply';
+            const key = `${diff}|${bloom}`;
+
+            if (!counts[key]) {
+                counts[key] = { difficulty: diff, bloomLevel: bloom, count: 0 };
+            }
+            counts[key].count++;
+        });
+
+        // Convert map to array for the provider
+        distributionPlan.breakdown = Object.values(counts);
+
+        console.log('Generating with single request distribution plan:', distributionPlan);
+
+        // 3. Execute Single Request
+        const singleRequestOptions = {
+            ...options,
+            numQuestions: numQuestions,
+            distributionPlan: distributionPlan, // Pass the full plan
+            difficultyDistribution: null, // Clear to prevent recursion
+            bloomDistribution: null
+        };
+
+        const result = await this.generateQuestions(text, singleRequestOptions);
+
+        // 4. Return Result
+        return {
+            ...result,
+            metadata: {
+                ...result.metadata,
+                distribution_mode: 'advanced_single_request',
+                plan: counts
+            }
+        };
     }
 
     /**

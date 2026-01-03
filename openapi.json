@@ -30,6 +30,14 @@
     {
       "name": "Documents",
       "description": "Stateful document processing for granular content selection"
+    },
+    {
+      "name": "Jobs",
+      "description": "Async job queue operations"
+    },
+    {
+      "name": "Debug",
+      "description": "Debugging and verification endpoints"
     }
   ],
   "paths": {
@@ -196,7 +204,14 @@
                 "properties": {
                   "provider": {
                     "type": "string",
-                    "enum": ["gemini", "openai", "anthropic", "deepseek", "kimi", "kimicn"],
+                    "enum": [
+                      "gemini",
+                      "openai",
+                      "anthropic",
+                      "deepseek",
+                      "kimi",
+                      "kimicn"
+                    ],
                     "description": "Provider name to switch to",
                     "example": "gemini"
                   }
@@ -227,7 +242,7 @@
         }
       }
     },
-    "api": {
+    "/api": {
       "get": {
         "tags": ["System"],
         "summary": "API documentation",
@@ -308,12 +323,12 @@
                         "description": "List of image source identifiers to include"
                       },
                       "numQuestions": {
-                         "type": "integer",
-                         "default": 10
+                        "type": "integer",
+                        "default": 10
                       },
                       "difficulty": {
-                          "type": "string",
-                          "enum": ["easy", "medium", "hard", "mixed"]
+                        "type": "string",
+                        "enum": ["easy", "medium", "hard", "mixed"]
                       }
                     }
                   }
@@ -326,11 +341,243 @@
           "200": {
             "description": "Questions generated successfully",
             "content": {
-               "application/json": {
+              "application/json": {
                 "schema": {
-                   "$ref": "#/components/schemas/QuestionResponse"
+                  "$ref": "#/components/schemas/QuestionResponse"
                 }
-               }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/parallel/config": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Get parallel processing config",
+        "description": "Get current configuration for parallel question generation",
+        "responses": {
+          "200": {
+            "description": "Configuration retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/parallel/estimate": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Estimate parallel savings",
+        "description": "Estimate time savings for parallel processing based on question count",
+        "parameters": [
+          {
+            "name": "numQuestions",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 30
+            },
+            "description": "Number of questions to estimate for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estimate retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/debug/process": {
+      "post": {
+        "tags": ["Debug"],
+        "summary": "Debug file processing",
+        "description": "Process a file and return structured content for debugging",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File processed successfully"
+          }
+        }
+      }
+    },
+    "/api/debug/verify-ai": {
+      "post": {
+        "tags": ["Debug"],
+        "summary": "Verify AI perception",
+        "description": "Verify if AI can see provided text and images",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string" },
+                        "mediaType": { "type": "string" },
+                        "data": { "type": "string" }
+                      }
+                    }
+                  },
+                  "provider": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification complete"
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "post": {
+        "tags": ["Jobs"],
+        "summary": "Submit a new job",
+        "description": "Submit a background job for question generation",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text": { "type": "string" },
+                  "numQuestions": { "type": "integer", "default": 10 },
+                  "difficulty": { "type": "string", "default": "mixed" },
+                  "bloomLevel": { "type": "string", "default": "apply" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted"
+          }
+        }
+      },
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "List all jobs",
+        "description": "Get a list of all jobs, optionally filtered by status",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "processing", "completed", "failed"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Get job status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "job": { "$ref": "#/components/schemas/JobStatus" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Jobs"],
+        "summary": "Cancel a job",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job cancelled"
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}/result": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Get job result",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionResponse"
+                }
+              }
             }
           }
         }
@@ -488,7 +735,10 @@
         "type": "object",
         "properties": {
           "success": { "type": "boolean" },
-          "docId": { "type": "string", "description": "Unique identifier for the uploaded document state" },
+          "docId": {
+            "type": "string",
+            "description": "Unique identifier for the uploaded document state"
+          },
           "filename": { "type": "string" },
           "pages": {
             "type": "array",
@@ -504,13 +754,41 @@
                     "properties": {
                       "source": { "type": "string" },
                       "mediaType": { "type": "string" },
-                      "data": { "type": "string", "description": "Base64 encoded image data" }
+                      "data": {
+                        "type": "string",
+                        "description": "Base64 encoded image data"
+                      }
                     }
                   }
                 }
               }
             }
           }
+        }
+      },
+      "JobStatus": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "processing", "completed", "failed"]
+          },
+          "progress": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time" },
+          "error": { "type": "string" }
+        }
+      },
+      "JobList": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "jobs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/JobStatus" }
+          },
+          "stats": { "type": "object" }
         }
       }
     }

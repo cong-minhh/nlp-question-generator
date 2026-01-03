@@ -1,0 +1,80 @@
+ORIGINAL:
+{
+  "analysis": "In the absence of a specific text, I will assume a hypothetical scenario involving a team implementing a project management system that uses Agile methodology. Key concepts include understanding Agile principles, applying these in different project stages, and the ability to resolve conflicts that arise during the implementation process.",
+  "questions": [
+    {
+      "questiontext": "A project manager is implementing an Agile system and encounters a situation where the development team is consistently missing sprint goals. Which of the following actions best demonstrates an understanding of Agile principles in addressing this issue?",
+      "optiona": "Immediately switch to a Waterfall methodology to enforce structure",
+      "optionb": "Increase the workload in subsequent sprints to compensate for missed goals",
+      "optionc": "Conduct a retrospective to identify issues and adjust the team's approach",
+      "optiond": "Assume the team is underperforming and replace key members",
+      "correctanswer": "c",
+      "difficulty": "mixed",
+      "cognitive_level": "apply",
+      "rationale": "Option C is correct as it involves using a fundamental Agile practice of conducting a retrospective to understand and address issues. Option A suggests a complete methodology change, which is not Agile. Option B is counterproductive as it can lead to burnout and further decrease in productivity. Option D is too drastic and doesn't involve problem-solving as Agile principles would suggest."
+    },
+    {
+      "questiontext": "In an Agile project, a conflict arises between developers who want to stick to the current sprint backlog and the client who requests an urgent addition. How should the team prioritize this new request in line with Agile practices?",
+      "optiona": "Add the request to the current sprint backlog and extend the sprint",
+      "optionb": "Decline the client's request until the next sprint planning session",
+      "optionc": "Evaluate the impact, potentially reprioritize the current backlog, and discuss with the client",
+      "optiond": "Make the change without discussing it with the rest of the team",
+      "correctanswer": "c",
+      "difficulty": "mixed",
+      "cognitive_level": "apply",
+      "rationale": "Option C is correct as it follows Agile's emphasis on collaboration, flexibility, and client interaction. Option A is problematic as it may disrupt the sprint's planned work. Option B is too rigid and doesn't consider the client's urgency. Option D disregards team collaboration, a key principle of Agile."
+    },
+    {
+      "questiontext": "An Agile team is struggling with inefficient communication, resulting in tasks being misunderstood and delayed. To address this issue, which of the following actions best represents the application of Agile principles?",
+      "optiona": "Implement a new project management software to track tasks more closely",
+      "optionb": "Schedule more frequent meetings to ensure everyone is on the same page",
+      "optionc": "Conduct daily stand-ups and improve the team's communication channels",
+      "optiond": "Increase the penalty for task delays to motivate individuals",
+      "correctanswer"": "c",
+      "difficulty": "mixed",
+      "cognitive_level": "apply",
+      "rationale": "Option C is correct as it directly addresses the communication issue with tools that are part of Agile practices, such as daily stand-ups. Option A might introduce additional complexity without solving the communication problem. Option B could lead to meeting fatigue and isn't the most efficient approach. Option D focuses on punishment rather than improving processes, which is not in line with Agile values."
+    }
+  ]
+}
+
+AFTER FIXES:
+{
+  "analysis": "In the absence of a specific text, I will assume a hypothetical scenario involving a team implementing a project management system that uses Agile methodology. Key concepts include understanding Agile principles, applying these in different project stages, and the ability to resolve conflicts that arise during the implementation process.",
+  "questions": [
+    {
+      "questiontext": "A project manager is implementing an Agile system and encounters a situation where the development team is consistently missing sprint goals. Which of the following actions best demonstrates an understanding of Agile principles in addressing this issue?",
+      "optiona": "Immediately switch to a Waterfall methodology to enforce structure",
+      "optionb": "Increase the workload in subsequent sprints to compensate for missed goals",
+      "optionc": "Conduct a retrospective to identify issues and adjust the team's approach",
+      "optiond": "Assume the team is underperforming and replace key members",
+      "correctanswer": "c",
+      "difficulty": "mixed",
+      "cognitive_level": "apply",
+      "rationale": "Option C is correct as it involves using a fundamental Agile practice of conducting a retrospective to understand and address issues. Option A suggests a complete methodology change, which is not Agile. Option B is counterproductive as it can lead to burnout and further decrease in productivity. Option D is too drastic and doesn't involve problem-solving as Agile principles would suggest."
+    },
+    {
+      "questiontext": "In an Agile project, a conflict arises between developers who want to stick to the current sprint backlog and the client who requests an urgent addition. How should the team prioritize this new request in line with Agile practices?",
+      "optiona": "Add the request to the current sprint backlog and extend the sprint",
+      "optionb": "Decline the client's request until the next sprint planning session",
+      "optionc": "Evaluate the impact, potentially reprioritize the current backlog, and discuss with the client",
+      "optiond": "Make the change without discussing it with the rest of the team",
+      "correctanswer": "c",
+      "difficulty": "mixed",
+      "cognitive_level": "apply",
+      "rationale": "Option C is correct as it follows Agile's emphasis on collaboration, flexibility, and client interaction. Option A is problematic as it may disrupt the sprint's planned work. Option B is too rigid and doesn't consider the client's urgency. Option D disregards team collaboration, a key principle of Agile."
+    },
+    {
+      "questiontext": "An Agile team is struggling with inefficient communication, resulting in tasks being misunderstood and delayed. To address this issue, which of the following actions best represents the application of Agile principles?",
+      "optiona": "Implement a new project management software to track tasks more closely",
+      "optionb": "Schedule more frequent meetings to ensure everyone is on the same page",
+      "optionc": "Conduct daily stand-ups and improve the team's communication channels",
+      "optiond": "Increase the penalty for task delays to motivate individuals",
+      "correctanswer"": "c",\n      "difficulty": "mixed",\n      "cognitive_level": "apply",\n      "rationale": "Option C is correct as it directly addresses the communication issue with tools that are part of Agile practices, such as daily stand-ups. Option A might introduce additional complexity without solving the communication problem. Option B could lead to meeting fatigue and isn't the most efficient approach. Option D focuses on punishment rather than improving processes, which is not in line with Agile values."\n    }\n  ]\n}
+
+ERROR:
+Expected ':' after property name in JSON at position 3215 (line 32 column 22)
+
+CONTEXT:
+    "optiond": "Increase the penalty for task delays to motivate individuals",
+      "correctanswer"": "c",\n      "difficulty": "mixed",\n      "cognitive_level": "apply",\n      "rationale": "Option

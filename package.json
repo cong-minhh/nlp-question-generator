@@ -27,7 +27,7 @@
   "license": "GPL-3.0",
   "dependencies": {
     "@google/generative-ai": "^0.2.1",
-    "@scalar/express-api-reference": "^0.8.24",
+    "@scalar/express-api-reference": "^0.8.30",
     "adm-zip": "^0.5.16",
     "axios": "^1.13.2",
     "cors": "^2.8.5",

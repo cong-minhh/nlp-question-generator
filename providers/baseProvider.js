@@ -491,7 +491,7 @@ Ensure all questions target this cognitive level specifically.`;
             }
 
             // Validate difficulty
-            if (!['easy', 'medium', 'hard'].includes(standardized.difficulty)) {
+            if (!['easy', 'medium', 'hard', 'mixed'].includes(standardized.difficulty)) {
                 console.warn(`Question ${index + 1} has invalid difficulty "${standardized.difficulty}", defaulting to "medium"`);
                 standardized.difficulty = 'medium';
             }
@@ -530,104 +530,111 @@ Ensure all questions target this cognitive level specifically.`;
         const {
             numQuestions = 10,
             bloomLevel = 'apply',
-            difficulty = 'mixed'
+            difficulty = 'mixed',
+            distributionPlan = null
         } = options;
 
-        const bloomInstructions = this.getBloomInstructions(bloomLevel);
+        // Handle object input (text + images)
+        let sourceText = text;
+        if (typeof text === 'object' && text !== null) {
+            if (text.text) {
+                sourceText = text.text;
+            } else {
+                sourceText = JSON.stringify(text); // Fallback
+            }
+        }
+
+        let promptInstructions = '';
+        let promptDifficulty = difficulty;
+
+        if (distributionPlan && distributionPlan.breakdown) {
+            // Advanced Distribution Mode
+            promptInstructions = `\n        **DISTRIBUTION REQUIREMENTS (STRICT):**\n        You must generate exactly ${numQuestions} questions according to this breakdown:\n`;
+            
+            distributionPlan.breakdown.forEach(item => {
+                promptInstructions += `        - ${item.count} questions: Difficulty [${item.difficulty.toUpperCase()}], Bloom Level [${item.bloomLevel.toUpperCase()}]\n`;
+            });
+
+            promptInstructions += `\n        **BLOOM DEFINITIONS FOR REFERENCE:**\n`;
+            
+            // Collect unique bloom levels
+            const uniqueBlooms = [...new Set(distributionPlan.breakdown.map(item => item.bloomLevel))];
+            uniqueBlooms.forEach(level => {
+                 const info = this.getBloomInstructions(level).replace('Ensure all questions target this cognitive level specifically.', ''); // remove constraint
+                 promptInstructions += `        ${info}\n`;
+            });
+            
+            promptDifficulty = 'VARIES (See Distribution Requirements)';
+        } else {
+            // Standard Mode
+            promptInstructions = this.getBloomInstructions(bloomLevel);
+        }
 
         return `You are an Expert Instructional Designer and Assessment Specialist with expertise in cognitive science and learning theory.
 
-Your task is to create ${numQuestions} high-quality multiple choice questions that test deep understanding, NOT simple recall.
+        Your task is to create ${numQuestions} high-quality multiple choice questions that test deep understanding, NOT simple recall.
 
-${bloomInstructions}
+        ${promptInstructions}
 
-**SOURCE TEXT:**
-${text}
+        **SOURCE TEXT:**
+        ${sourceText}
 
----
+        ---
 
-**CHAIN OF THOUGHT PROCESS - FOLLOW THESE STEPS:**
+        **CHAIN OF THOUGHT PROCESS - FOLLOW THESE STEPS:**
 
-**STEP 1: ANALYZE THE TEXT**
-Before creating questions, identify:
-- Key concepts, principles, and relationships in the text
-- Important processes, mechanisms, or procedures described
-- Potential misconceptions or common errors learners might have
-- Real-world applications or scenarios where this knowledge applies
+        **STEP 1: ANALYZE THE TEXT**
+        Before creating questions, identify:
+        - Key concepts, principles, and relationships in the text
+        - Important processes, mechanisms, or procedures described
+        - Potential misconceptions or common errors learners might have
+        - Real-world applications or scenarios where this knowledge applies
 
-**STEP 2: DRAFT QUESTIONS**
-For each question:
-- Create a scenario or context that requires applying the concept
-- Ensure the question stem is clear and unambiguous
-- Target the specified Bloom's taxonomy level
-- Avoid "What is..." questions unless at 'remember' level
+        **STEP 2: DRAFT QUESTIONS**
+        For each question:
+        - Create a scenario or context that requires applying the concept
+        - Ensure the question stem is clear and unambiguous
+        - Target the specified Bloom's taxonomy level
+        - Avoid "What is..." questions unless at 'remember' level
 
-**STEP 3: ENGINEER PLAUSIBLE DISTRACTORS**
-For each wrong answer (distractor):
-- Base it on common misconceptions or partial understanding
-- Make it tempting to someone with incomplete knowledge
-- Ensure it's clearly wrong to someone who fully understands
-- Avoid obviously absurd or unrelated options
+        **STEP 3: ENGINEER PLAUSIBLE DISTRACTORS**
+        For each wrong answer (distractor):
+        - Base it on common misconceptions or partial understanding
+        - Make it tempting to someone with incomplete knowledge
+        - Ensure it's clearly wrong to someone who fully understands
+        - Avoid obviously absurd or unrelated options
 
-**STEP 4: VALIDATE QUALITY**
-Ensure each question:
-- Has exactly one clearly correct answer
-- Has three plausible but incorrect distractors
-- Includes a detailed rationale explaining the reasoning
-- Aligns with the difficulty level: ${difficulty}
+        **STEP 4: VALIDATE QUALITY**
+        Ensure each question:
+        - Has exactly one clearly correct answer
+        - Has three plausible but incorrect distractors
+        - Includes a detailed rationale explaining the reasoning
+        - Aligns with the difficulty level: ${promptDifficulty}
 
----
+        ---
 
-**QUALITY STANDARDS:**
+        **OUTPUT FORMAT:**
+        Return ONLY a valid JSON object. Do NOT include any markdown formatting, explanations, or text outside the JSON.
 
-✓ **GOOD QUESTION EXAMPLE:**
-{
-  "questiontext": "A development team notices their Node.js application's memory usage grows continuously until the process crashes. They've confirmed no memory leaks in their code. Based on garbage collection principles, which scenario most likely explains this behavior?",
-  "optiona": "The V8 engine's garbage collector is disabled by default in production",
-  "optionb": "Large objects are being held in closures, preventing garbage collection",
-  "optionc": "JavaScript automatically clears memory every 60 seconds",
-  "optiond": "The heap size is too large, causing collection delays",
-  "correctanswer": "B",
-  "difficulty": "hard",
-  "rationale": "Option B is correct: closures maintain references to variables in their scope, preventing garbage collection even when objects are no longer needed elsewhere. Option A is false (GC is always active). Option C is false (no automatic 60s cycle). Option D is backwards (larger heap would delay crashes, not cause them)."
-}
+        Required structure:
+        {
+        "analysis": "Your Step 1 analysis of key concepts and potential question areas (2-3 sentences)",
+        "questions": [
+            {
+            "questiontext": "Complete question with scenario/context...",
+            "optiona": "Plausible distractor based on misconception A",
+            "optionb": "Plausible distractor based on misconception B",
+            "optionc": "Correct answer with proper reasoning",
+            "optiond": "Plausible distractor based on misconception D",
+            "correctanswer": "C",
+            "difficulty": "${promptDifficulty === 'VARIES (See Distribution Requirements)' ? 'easy|medium|hard' : promptDifficulty}",
+            "cognitive_level": "remember|understand|apply|analyze|evaluate|create",
+            "rationale": "Detailed explanation of why the correct answer is right and why each distractor is wrong"
+            }
+        ]
+        }
 
-✗ **BAD QUESTION EXAMPLE:**
-{
-  "questiontext": "What is garbage collection?",
-  "optiona": "Deleting files",
-  "optionb": "Automatic memory management",
-  "optionc": "Code optimization",
-  "optiond": "Error handling",
-  "correctanswer": "B",
-  "difficulty": "easy",
-  "rationale": "It's the definition."
-}
-(Too simple, just recall, weak distractors)
-
----
-
-**OUTPUT FORMAT:**
-Return ONLY a valid JSON object. Do NOT include any markdown formatting, explanations, or text outside the JSON.
-
-Required structure:
-{
-  "analysis": "Your Step 1 analysis of key concepts and potential question areas (2-3 sentences)",
-  "questions": [
-    {
-      "questiontext": "Complete question with scenario/context...",
-      "optiona": "Plausible distractor based on misconception A",
-      "optionb": "Plausible distractor based on misconception B",
-      "optionc": "Correct answer with proper reasoning",
-      "optiond": "Plausible distractor based on misconception D",
-      "correctanswer": "C",
-      "difficulty": "medium",
-      "rationale": "Detailed explanation of why the correct answer is right and why each distractor is wrong"
-    }
-  ]
-}
-
-Generate exactly ${numQuestions} questions now.`;
+        Generate exactly ${numQuestions} questions now.`;
     }
 }
 

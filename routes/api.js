@@ -80,34 +80,101 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
 
         console.log(`Processing ${uploadedFiles.length} file(s)...`);
 
-        // Process files and extract text
+        // Common options for processing (like page range for PDFs)
+        // Note: Global page range applies to ALL files in this stateless request.
         const pageStart = req.body.page_start || req.body.pageStart ? parseInt(req.body.page_start || req.body.pageStart) : undefined;
         const pageEnd = req.body.page_end || req.body.pageEnd ? parseInt(req.body.page_end || req.body.pageEnd) : undefined;
         
         console.log(`Processing with options: pageStart=${pageStart}, pageEnd=${pageEnd}`);
         
-        const { extractedTexts, extractedImages, fileInfo, combinedText, totalTextLength } = await fileProcessingService.processFiles(uploadedFiles, { pageStart, pageEnd });
+        // ---------------------------------------------------------
+        // REFACTOR: Use ContentFilter for unified logic
+        // ---------------------------------------------------------
+        
+        let allTextParts = [];
+        let allImages = [];
+        const fileInfo = []; // To track status per file
+
+        for (const file of uploadedFiles) {
+            try {
+                // 1. Process File (Extract structure: pages, images, text)
+                // We use processFile directly instead of processFiles to have control
+                const extractionResult = await fileProcessingService.processFile(
+                    file.path, 
+                    file.originalname, 
+                    { pageStart, pageEnd } 
+                );
+
+                // 2. Apply Content Filter
+                // In stateless mode, we include ALL extracted content by default (no specific includeSlides/includeImages)
+                // But we use ContentFilter.apply to ensure consistent formatting logic.
+                const filteredContent = require('../utils/ContentFilter').apply(extractionResult, {
+                    // Implicitly include all since we don't pass specific IDs
+                });
+
+                // 3. Aggregate Results
+                if (filteredContent.text && filteredContent.text.trim()) {
+                    allTextParts.push(filteredContent.text);
+                }
+
+                if (filteredContent.images && filteredContent.images.length > 0) {
+                    allImages.push(...filteredContent.images);
+                }
+
+                // Track success status
+                fileInfo.push({
+                    name: file.originalname,
+                    size: file.size,
+                    textLength: filteredContent.text.length,
+                    imageCount: filteredContent.images.length,
+                    status: 'success'
+                });
+
+            } catch (fileError) {
+                console.error(`Error processing file ${file.originalname}:`, fileError);
+                fileInfo.push({
+                    name: file.originalname,
+                    size: file.size,
+                    status: 'error',
+                    message: fileError.message
+                });
+            }
+        }
 
         // Cleanup uploaded files
         await cleanupFiles(uploadedFiles.map(f => f.path));
 
-        // Check if we have any text or images
-        if (extractedTexts.length === 0 && extractedImages.length === 0) {
+        const combinedText = allTextParts.join('\n\n');
+        const totalTextLength = combinedText.length;
+
+        // Check if we have any content
+        if (totalTextLength === 0 && allImages.length === 0) {
+             // Check if all failed
+             const allFailed = fileInfo.every(f => f.status === 'error');
+             if (allFailed) {
+                 return res.status(500).json(createErrorResponse(
+                     'Failed to process any files. See file details for errors.',
+                     500,
+                     { files: fileInfo }
+                 ));
+             }
+
             return res.status(400).json(createErrorResponse(
                 'No content extracted. Could not extract text or images from any of the uploaded files',
-                400
+                400,
+                { files: fileInfo }
             ));
         }
 
-        console.log(`Total extracted text: ${combinedText.length} characters from ${extractedTexts.length} file(s)`);
-        if (extractedImages.length > 0) {
-            console.log(`Total extracted images: ${extractedImages.length}`);
+        console.log(`Total extracted text: ${totalTextLength} characters from ${uploadedFiles.length} file(s)`);
+        if (allImages.length > 0) {
+            console.log(`Total extracted images: ${allImages.length}`);
         }
 
         // Generate questions
         // Construct payload: plain text OR object with text+images
-        const payload = extractedImages.length > 0 
-            ? { text: combinedText || "Analyze these images and generate questions based on them.", images: extractedImages }
+        const payload = allImages.length > 0 
+            ? { text: combinedText || "Analyze these images and generate questions based on them.", images: allImages }
             : combinedText;
 
         const result = await questionGenerator.generateQuestions(payload, { numQuestions: numQuestionsValidation.value });
@@ -115,10 +182,11 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         // Return response with file info
         res.json(createSuccessResponse(result, {
             filesProcessed: uploadedFiles.length,
-            filesWithText: extractedTexts.length,
+            filesWithText: allTextParts.length,
             totalTextLength,
             files: fileInfo
         }));
+
     } catch (error) {
         // Cleanup files in case of error
         if (uploadedFiles.length > 0) {
