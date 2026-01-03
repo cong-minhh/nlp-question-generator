@@ -316,7 +316,7 @@ class BaseAIProvider {
      * @param {string} level - Bloom's level: 'remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'
      * @returns {string} - Specific instructions for that cognitive level
      */
-    getBloomInstructions(level = 'apply') {
+    getBloomInstructions(level = 'understand') {
         const bloomLevels = {
             remember: {
                 description: 'Recall facts and basic concepts',
@@ -627,7 +627,7 @@ Ensure all questions target this cognitive level specifically.`;
             "optionc": "Correct answer with proper reasoning",
             "optiond": "Plausible distractor based on misconception D",
             "correctanswer": "C",
-            "difficulty": "${promptDifficulty === 'VARIES (See Distribution Requirements)' ? 'easy|medium|hard' : promptDifficulty}",
+            "difficulty": "${(promptDifficulty === 'mixed' || promptDifficulty.startsWith('VARIES')) ? 'easy|medium|hard' : promptDifficulty}",
             "cognitive_level": "remember|understand|apply|analyze|evaluate|create",
             "rationale": "Detailed explanation of why the correct answer is right and why each distractor is wrong"
             }
