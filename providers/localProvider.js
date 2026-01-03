@@ -6,7 +6,7 @@ class LocalProvider extends BaseAIProvider {
         super(config);
         this.name = 'local';
         this.description = 'Local LLM (Ollama/LocalAI)';
-        this.supportedModels = ['llama3', 'mistral', 'gemma', 'phi3'];
+        this.supportedModels = ['llama3', 'mistral', 'gemma', 'phi3', 'qwen2.5:3b'];
     }
 
     validateConfig() {

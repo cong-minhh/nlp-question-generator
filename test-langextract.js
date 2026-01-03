@@ -1,3 +1,4 @@
+require('dotenv').config();
 const structuredExtractor = require('./services/structuredExtractor');
 const path = require('path');
 

@@ -28,7 +28,15 @@ class StructuredExtractor {
      * @param {string} [model='gemini-2.0-flash'] - Model ID
      * @returns {Promise<Object>} - The extracted JSON data
      */
-    async extract(filePath, prompt, model = 'gemini-2.0-flash') {
+    async extract(filePath, prompt, model) {
+        // Resolve model if not provided
+        if (!model) {
+            if (process.env.DEFAULT_PROVIDER === 'local' && process.env.LOCAL_MODEL) {
+                model = process.env.LOCAL_MODEL;
+            } else {
+                model = 'gemini-2.0-flash';
+            }
+        }
         return new Promise((resolve, reject) => {
             const process = spawn(this.pythonPath, [
                 this.scriptPath,
@@ -65,6 +73,8 @@ class StructuredExtractor {
 
                 try {
                     const result = JSON.parse(stdout);
+                    // Add model info to result if not present (Python script adds it, but just in case)
+                    if (!result.model) result.model = model;
                     resolve(result);
                 } catch (e) {
                     reject(new Error('Failed to parse Python output: ' + e.message + '\nOutput: ' + stdout));
