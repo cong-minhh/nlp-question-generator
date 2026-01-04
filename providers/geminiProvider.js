@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const BaseAIProvider = require('./baseProvider');
+const { logger } = require('../utils/logger');
 
 /**
  * Gemini AI Provider Implementation
@@ -55,9 +56,9 @@ class GeminiProvider extends BaseAIProvider {
         try {
             this.model = this.genAI.getGenerativeModel({ model: modelName });
             this.currentModel = modelName;
-            console.log(`✓ Initialized Gemini with model: ${modelName}`);
+            logger.info(`Initialized Gemini with model: ${modelName}`);
         } catch (error) {
-            console.warn(`⚠ Failed to initialize model ${modelName}: ${error.message}`);
+            logger.warn(`Failed to initialize model ${modelName}: ${error.message}`);
             // Will fallback during generation if needed
             this.model = this.genAI.getGenerativeModel({ model: modelName });
             this.currentModel = modelName;
@@ -72,18 +73,18 @@ class GeminiProvider extends BaseAIProvider {
         this.currentModelIndex++;
         
         if (this.currentModelIndex >= this.supportedModels.length) {
-            console.error('⚠ All fallback models exhausted');
+            logger.error('All fallback models exhausted');
             return false;
         }
 
         const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`Falling back to model: ${fallbackModel}`);
+        logger.info(`Falling back to model: ${fallbackModel}`);
         
         try {
             await this.initializeModel(fallbackModel);
             return true;
         } catch (error) {
-            console.warn(`⚠ Fallback to ${fallbackModel} failed: ${error.message}`);
+            logger.warn(`Fallback to ${fallbackModel} failed: ${error.message}`);
             return await this.tryFallbackModel(); // Try next model
         }
     }
@@ -136,7 +137,7 @@ class GeminiProvider extends BaseAIProvider {
                                 }
                             });
                         });
-                        console.log(`Adding ${text.images.length} images to Gemini prompt`);
+                        // logger.debug(`Adding ${text.images.length} images to Gemini prompt`);
                     }
                 } else {
                     // Legacy string input
@@ -170,11 +171,11 @@ class GeminiProvider extends BaseAIProvider {
                 
                 // Check if it's a 404 error (model not found) - try fallback immediately
                 if (error.message && error.message.includes('404')) {
-                    console.warn(`⚠ Model ${this.currentModel} not available (404)`);
+                    logger.warn(`Model ${this.currentModel} not available (404)`);
                     
                     const fallbackSuccess = await this.tryFallbackModel();
                     if (fallbackSuccess) {
-                        console.log(`✓ Retrying with fallback model: ${this.currentModel}`);
+                        logger.info(`Retrying with fallback model: ${this.currentModel}`);
                         attempt = 0; // Reset attempts for new model
                         continue; // Retry with new model
                     } else {
@@ -187,18 +188,18 @@ class GeminiProvider extends BaseAIProvider {
                     const delay = this.baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
                     
                     if (!isLastAttempt) {
-                        console.log(`⚠ Gemini API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} overloaded. Retrying in ${delay/1000}s...`);
+                        logger.warn(`Gemini API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} overloaded. Retrying in ${delay/1000}s...`);
                         await this.sleep(delay);
                         continue; // Retry with same model
                     } else {
                         // On last attempt, just throw - don't fallback for 503 as the model works
-                        console.warn(`⚠ ${this.currentModel} is overloaded after ${this.maxRetries} attempts. Please try again later.`);
+                        logger.warn(`${this.currentModel} is overloaded after ${this.maxRetries} attempts. Please try again later.`);
                         throw new Error(`Gemini model ${this.currentModel} is currently overloaded. Please try again in a few moments.`);
                     }
                 }
                 
                 // For other errors or exhausted all options
-                console.error('Gemini API Error:', error.message);
+                logger.error('Gemini API Error', error);
                 
                 if (isLastAttempt) {
                     throw new Error(`Gemini generation failed: ${error.message}`);
@@ -233,7 +234,7 @@ class GeminiProvider extends BaseAIProvider {
                             }
                         });
                     });
-                    console.log(`Adding ${images.length} images to Gemini generic prompt`);
+                    logger.debug(`Adding ${images.length} images to Gemini generic prompt`);
                 }
 
                 const result = await this.model.generateContent(promptParts);
@@ -244,7 +245,7 @@ class GeminiProvider extends BaseAIProvider {
                 const isLastAttempt = attempt === this.maxRetries;
                 
                 if (error.message && error.message.includes('404')) {
-                    console.warn(`⚠ Model ${this.currentModel} not available (404)`);
+                    logger.warn(`Model ${this.currentModel} not available (404)`);
                      const fallbackSuccess = await this.tryFallbackModel();
                     if (fallbackSuccess) {
                         attempt = 0; continue;
@@ -264,60 +265,7 @@ class GeminiProvider extends BaseAIProvider {
         }
     }
 
-    /**
-     * Generate raw response (generic text generation)
-     * @param {string} text - Prompt text
-     * @param {Array} images - Optional array of images {data, mediaType}
-     * @returns {Promise<string>} - Generated text
-     */
-    async generateResponse(inputText, images = []) {
-        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
-            try {
-                let promptParts = [];
-                
-                // Add text
-                promptParts.push(inputText);
 
-                // Add images
-                if (images && Array.isArray(images)) {
-                    images.forEach(img => {
-                        promptParts.push({
-                            inlineData: {
-                                data: img.data,
-                                mimeType: img.mediaType
-                            }
-                        });
-                    });
-                    console.log(`Adding ${images.length} images to Gemini generic prompt`);
-                }
-
-                const result = await this.model.generateContent(promptParts);
-                const response = await result.response;
-                return response.text();
-
-            } catch (error) {
-                const isLastAttempt = attempt === this.maxRetries;
-                
-                if (error.message && error.message.includes('404')) {
-                    console.warn(`⚠ Model ${this.currentModel} not available (404)`);
-                     const fallbackSuccess = await this.tryFallbackModel();
-                    if (fallbackSuccess) {
-                        attempt = 0; continue;
-                    }
-                }
-                
-                 if (error.message && error.message.includes('503')) {
-                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
-                    if (!isLastAttempt) {
-                        await this.sleep(delay);
-                        continue;
-                    }
-                }
-
-                if (isLastAttempt) throw new Error(`Gemini generation failed: ${error.message}`);
-            }
-        }
-    }
 
     /**
      * Test Gemini connection with automatic fallback

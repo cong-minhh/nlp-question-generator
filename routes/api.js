@@ -1,4 +1,5 @@
 const express = require('express');
+const { logger } = require('../utils/logger');
 const upload = require('../config/upload');
 const fileProcessingService = require('../services/FileProcessingService');
 const { cleanupFiles } = require('../utils/fileUtils');
@@ -44,7 +45,11 @@ router.post('/generate', authenticate, async (req, res) => {
         // Return success response
         res.json(createSuccessResponse(result));
     } catch (error) {
-        console.error('API Error:', error);
+        if (uploadedFiles.length > 0) {
+            await cleanupFiles(uploadedFiles.map(f => f.path));
+        }
+
+        logger.error('API Error', error);
         res.status(500).json(createErrorResponse(`Failed to generate questions: ${error.message}`, 500));
     }
 });
@@ -70,7 +75,7 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         }
 
         // Accept both num_questions and numQuestions for flexibility
-        console.log('DEBUG: req.body:', JSON.stringify(req.body, null, 2));
+        logger.debug('Generate from files request', { body: req.body });
         const requestedQuestions = req.body.num_questions || req.body.numQuestions || 10;
         const numQuestionsValidation = validateNumQuestions(requestedQuestions);
         if (!numQuestionsValidation.valid) {
@@ -78,14 +83,14 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
             return res.status(400).json(createErrorResponse(numQuestionsValidation.error, 400));
         }
 
-        console.log(`Processing ${uploadedFiles.length} file(s)...`);
+        logger.info(`Processing ${uploadedFiles.length} file(s)`);
 
         // Common options for processing (like page range for PDFs)
         // Note: Global page range applies to ALL files in this stateless request.
         const pageStart = req.body.page_start || req.body.pageStart ? parseInt(req.body.page_start || req.body.pageStart) : undefined;
         const pageEnd = req.body.page_end || req.body.pageEnd ? parseInt(req.body.page_end || req.body.pageEnd) : undefined;
         
-        console.log(`Processing with options: pageStart=${pageStart}, pageEnd=${pageEnd}`);
+        logger.debug('File processing options', { pageStart, pageEnd });
         
         // ---------------------------------------------------------
         // REFACTOR: Use ContentFilter for unified logic
@@ -131,7 +136,7 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
                 });
 
             } catch (fileError) {
-                console.error(`Error processing file ${file.originalname}:`, fileError);
+                logger.error(`Error processing file ${file.originalname}`, fileError);
                 fileInfo.push({
                     name: file.originalname,
                     size: file.size,
@@ -166,10 +171,11 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
             ));
         }
 
-        console.log(`Total extracted text: ${totalTextLength} characters from ${uploadedFiles.length} file(s)`);
-        if (allImages.length > 0) {
-            console.log(`Total extracted images: ${allImages.length}`);
-        }
+        logger.info(`Extraction complete`, { 
+            totalTextLength, 
+            fileCount: uploadedFiles.length, 
+            imageCount: allImages.length 
+        });
 
         // Generate questions
         // Construct payload: plain text OR object with text+images
@@ -194,6 +200,7 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         }
 
         console.error('API Error:', error);
+        logger.error('API Error', error);
         res.status(500).json(createErrorResponse(`Failed to generate questions from files: ${error.message}`, 500));
     }
 });
@@ -218,7 +225,7 @@ router.get('/providers', async (req, res) => {
             }))
         }));
     } catch (error) {
-        console.error('API Error:', error);
+        logger.error('Failed to list providers', error);
         res.status(500).json(createErrorResponse(`Failed to list providers: ${error.message}`, 500));
     }
 });
@@ -238,7 +245,7 @@ router.get('/current-provider', async (req, res) => {
             configured: provider.isConfigured()
         }));
     } catch (error) {
-        console.error('API Error:', error);
+        logger.error('Failed to get current provider', error);
         res.status(500).json(createErrorResponse(`Failed to get current provider: ${error.message}`, 500));
     }
 });
@@ -278,7 +285,7 @@ router.post('/switch-provider', authenticate, async (req, res) => {
             currentProvider: provider
         }));
     } catch (error) {
-        console.error('API Error:', error);
+        logger.error('Failed to switch provider', error);
         res.status(500).json(createErrorResponse(`Failed to switch provider: ${error.message}`, 500));
     }
 });

@@ -4,6 +4,7 @@ const ParallelProcessor = require('../utils/parallelProcessor');
 const QualityScorer = require('../utils/qualityScorer');
 const Deduplicator = require('../utils/deduplicator');
 const DifficultyBalancer = require('../utils/difficultyBalancer');
+const { logger } = require('../utils/logger');
 
 /**
  * Multi-Provider Question Generation Service
@@ -84,9 +85,10 @@ class MultiProviderQuestionGenerator {
             });
 
             this.initialized = true;
-            console.log('✓ Multi-provider question generator initialized');
+            this.initialized = true;
+            logger.info('Multi-provider question generator initialized');
             if (this.qualityScorer.enabled) {
-                console.log(`✓ Quality scoring enabled (min score: ${this.qualityScorer.minScore}, provider: ${scorerProviderName})`);
+                logger.info(`Quality scoring enabled`, { minScore: this.qualityScorer.minScore, provider: scorerProviderName });
             }
         } catch (error) {
             throw new Error(`Failed to initialize question generator: ${error.message}`);
@@ -117,7 +119,7 @@ class MultiProviderQuestionGenerator {
         const MAX_TEXT_CHARS = parseInt(process.env.MAX_TEXT_LENGTH) || 1000000;
         
         if (text.length > MAX_TEXT_CHARS) {
-            console.warn(`⚠ Text too large (${text.length} chars). Truncating to ${MAX_TEXT_CHARS} chars.`);
+            logger.warn(`Text too large (${text.length} chars). Truncating to ${MAX_TEXT_CHARS} chars.`);
             text = text.substring(0, MAX_TEXT_CHARS);
         }
 
@@ -135,11 +137,11 @@ class MultiProviderQuestionGenerator {
             try {
                 const cached = await this.cacheManager.get(text, cacheOptions);
                 if (cached) {
-                    console.log(`✓ Cache hit (age: ${cached.cacheAge}min, uses: ${cached.accessCount})`);
+                    logger.info(`Cache hit`, { ageMin: cached.cacheAge, uses: cached.accessCount });
                     return cached;
                 }
             } catch (cacheError) {
-                console.warn('Cache read error:', cacheError.message);
+                logger.warn('Cache read error', { error: cacheError.message });
                 // Continue to generation if cache fails
             }
         }
@@ -157,15 +159,15 @@ class MultiProviderQuestionGenerator {
                     options
                 );
 
-                console.log(`Parallel generation returned ${result.questions.length} questions`);
+                logger.info(`Parallel generation completed`, { count: result.questions.length });
             } catch (error) {
-                console.error('Parallel generation failed:', error.message);
+                logger.error('Parallel generation failed', error);
                 throw error;
             }
         } else {
             // Regular generation for small batches
             if (options.parallel !== false && this.parallelProcessor.enabled) {
-                console.log(`Parallel generation skipped (requested ${numQuestions} < threshold ${this.parallelProcessor.threshold})`);
+                logger.debug(`Parallel generation skipped (requested ${numQuestions} < threshold ${this.parallelProcessor.threshold})`);
             }
             result = await this.providerManager.generateQuestions(text, options);
         }
@@ -234,7 +236,7 @@ class MultiProviderQuestionGenerator {
                 // Replenish missing questions if count dropped below requested
                 if (result.questions.length < numQuestions) {
                     const missingCount = numQuestions - result.questions.length;
-                    console.log(`⚠ Deduplication removed ${missingCount} questions. Replenishing...`);
+                    logger.warn(`Deduplication removed ${missingCount} questions. Replenishing...`);
 
                     let currentQuestions = [...result.questions];
                     let attempts = 0;
@@ -246,7 +248,7 @@ class MultiProviderQuestionGenerator {
                         // Request slightly more to account for potential new duplicates
                         const toGenerate = Math.ceil(needed * 1.5);
 
-                        console.log(`Replenishment attempt ${attempts}/${MAX_REPLENISH_ATTEMPTS}: Generating ${toGenerate} questions...`);
+                        logger.info(`Replenishment attempt ${attempts}/${MAX_REPLENISH_ATTEMPTS}: Generating ${toGenerate} questions...`);
 
                         try {
                             const replenishResult = await this.providerManager.generateQuestions(text, {
@@ -264,10 +266,10 @@ class MultiProviderQuestionGenerator {
                                 const newDedupResult = this.deduplicator.deduplicate(combined);
                                 currentQuestions = newDedupResult.questions;
 
-                                console.log(`Replenishment attempt ${attempts} result: Total now ${currentQuestions.length}/${numQuestions}`);
+                                logger.info(`Replenishment attempt ${attempts} result: Total now ${currentQuestions.length}/${numQuestions}`);
                             }
                         } catch (err) {
-                            console.warn(`Replenishment attempt ${attempts} failed:`, err.message);
+                            logger.warn(`Replenishment attempt ${attempts} failed`, { error: err.message });
                         }
                     }
 
@@ -278,9 +280,9 @@ class MultiProviderQuestionGenerator {
                     result.metadata.deduplication.finalCount = currentQuestions.length;
 
                     if (currentQuestions.length < numQuestions) {
-                        console.warn(`⚠ Could not fully replenish questions. Got ${currentQuestions.length}/${numQuestions}`);
+                        logger.warn(`Could not fully replenish questions. Got ${currentQuestions.length}/${numQuestions}`);
                     } else {
-                        console.log(`✓ Successfully replenished to ${currentQuestions.length} questions`);
+                        logger.info(`Successfully replenished to ${currentQuestions.length} questions`);
                     }
                 }
             }
@@ -338,14 +340,14 @@ class MultiProviderQuestionGenerator {
             // Store in cache (fire and forget)
             if (options.noCache !== true) {
                 this.cacheManager.set(text, cacheOptions, result).catch(err => {
-                    console.warn('Cache write error:', err.message);
+                    logger.warn('Cache write error', { error: err.message });
                 });
             }
 
 
             return result;
         } catch (error) {
-            console.error('Question generation failed:', error.message);
+            logger.error('Question generation failed', error);
             throw error;
         }
     }
@@ -408,7 +410,9 @@ class MultiProviderQuestionGenerator {
         // Convert map to array for the provider
         distributionPlan.breakdown = Object.values(counts);
 
-        console.log('Generating with single request distribution plan:', distributionPlan);
+        distributionPlan.breakdown = Object.values(counts);
+
+        logger.info('Generating with single request distribution plan', { plan: distributionPlan });
 
         // 3. Execute Single Request
         const singleRequestOptions = {
@@ -475,7 +479,7 @@ class MultiProviderQuestionGenerator {
 
         try {
             this.providerManager.switchProvider(providerName);
-            console.log(`✓ Switched to ${providerName} provider`);
+            logger.info(`Switched to ${providerName} provider`);
         } catch (error) {
             throw new Error(`Failed to switch provider: ${error.message}`);
         }
@@ -584,7 +588,7 @@ class MultiProviderQuestionGenerator {
         const fs = require('fs');
 
         try {
-            console.log('Processing files for extraction...');
+            logger.info('Processing files for extraction...');
 
             // Map file paths to the structure expected by processFiles
             const files = filePaths.map(filePath => ({
@@ -603,7 +607,7 @@ class MultiProviderQuestionGenerator {
                 throw new Error('No text or images could be extracted from the provided files');
             }
 
-            console.log(`Extracted ${extractedText.length} characters and ${extractedImages.length} images`);
+            logger.info(`Extracted content`, { chars: extractedText.length, images: extractedImages.length });
 
             // If we have images, we skip the text validation that requires 50 chars minimum
             // Because the text might just be "Analyze this image"
@@ -621,7 +625,7 @@ class MultiProviderQuestionGenerator {
 
             return await this.generateQuestions(payload, options);
         } catch (error) {
-            console.error('File processing failed:', error.message);
+            logger.error('File processing failed', error);
             throw error;
         }
     }

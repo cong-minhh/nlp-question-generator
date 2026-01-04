@@ -3,6 +3,8 @@
  * All AI providers must implement these methods
  */
 
+const { logger } = require('../utils/logger');
+
 class BaseAIProvider {
     constructor(config = {}) {
         this.config = config;
@@ -159,7 +161,7 @@ class BaseAIProvider {
                 
                 // Try parsing again
                 const parsed = JSON.parse(fixed);
-                console.warn('⚠ JSON required aggressive error correction - AI response had formatting issues');
+                logger.warn('JSON required aggressive error correction - AI response had formatting issues');
                 return parsed;
             } catch (secondError) {
                 // Provide detailed error for debugging
@@ -173,7 +175,7 @@ class BaseAIProvider {
                 const fs = require('fs');
                 const debugPath = `debug-json-error-${Date.now()}.txt`;
                 fs.writeFileSync(debugPath, `ORIGINAL:\n${originalJson}\n\nAFTER FIXES:\n${jsonString}\n\nERROR:\n${parseError.message}\n\nCONTEXT:\n${context}`);
-                console.error(`❌ JSON parsing failed. Debug info saved to: ${debugPath}`);
+                logger.error(`JSON parsing failed. Debug info saved to: ${debugPath}`, { error: parseError.message });
                 
                 throw new Error(
                     `JSON Parse Error: ${parseError.message}\n` +
@@ -316,7 +318,7 @@ class BaseAIProvider {
      * @param {string} level - Bloom's level: 'remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'
      * @returns {string} - Specific instructions for that cognitive level
      */
-    getBloomInstructions(level = 'understand') {
+    getBloomInstructions(level = 'apply') {
         const bloomLevels = {
             remember: {
                 description: 'Recall facts and basic concepts',
@@ -492,13 +494,13 @@ Ensure all questions target this cognitive level specifically.`;
 
             // Validate difficulty
             if (!['easy', 'medium', 'hard', 'mixed'].includes(standardized.difficulty)) {
-                console.warn(`Question ${index + 1} has invalid difficulty "${standardized.difficulty}", defaulting to "medium"`);
+                logger.warn(`Question ${index + 1} has invalid difficulty "${standardized.difficulty}", defaulting to "medium"`);
                 standardized.difficulty = 'medium';
             }
 
             // Warn if rationale is missing (not required but recommended)
             if (!standardized.rationale || standardized.rationale.trim() === '') {
-                console.warn(`Question ${index + 1} is missing a rationale`);
+                logger.debug(`Question ${index + 1} is missing a rationale`);
             }
 
             return standardized;
@@ -529,7 +531,7 @@ Ensure all questions target this cognitive level specifically.`;
     buildPrompt(text, options = {}) {
         const {
             numQuestions = 10,
-            bloomLevel = 'apply',
+            bloomLevel = 'apply',  // Default back to 'apply' for university level
             difficulty = 'mixed',
             distributionPlan = null
         } = options;
@@ -537,16 +539,12 @@ Ensure all questions target this cognitive level specifically.`;
         // Handle object input (text + images)
         let sourceText = text;
         if (typeof text === 'object' && text !== null) {
-            if (text.text) {
-                sourceText = text.text;
-            } else {
-                sourceText = JSON.stringify(text); // Fallback
-            }
+            sourceText = text.text || JSON.stringify(text);
         }
 
         let promptInstructions = '';
         let promptDifficulty = difficulty;
-
+        
         if (distributionPlan && distributionPlan.breakdown) {
             // Advanced Distribution Mode
             promptInstructions = `\n        **DISTRIBUTION REQUIREMENTS (STRICT):**\n        You must generate exactly ${numQuestions} questions according to this breakdown:\n`;
@@ -570,9 +568,12 @@ Ensure all questions target this cognitive level specifically.`;
             promptInstructions = this.getBloomInstructions(bloomLevel);
         }
 
-        return `You are an Expert Instructional Designer and Assessment Specialist with expertise in cognitive science and learning theory.
+        return `You are an Experienced University Lecturer creating an exam for international students.
 
-        Your task is to create ${numQuestions} high-quality multiple choice questions that test deep understanding, NOT simple recall.
+        Your goal is to create ${numQuestions} multiple-choice questions.
+        
+        **CRITICAL BALANCE:**
+        The questions must be **academically challenging** (University level), but the language must be **clear and direct** (accessible to non-native speakers). The difficulty should come from the *concepts*, not from complex grammar or obscure vocabulary.
 
         ${promptInstructions}
 
@@ -580,52 +581,50 @@ Ensure all questions target this cognitive level specifically.`;
         ${sourceText}
 
         ---
+        **ANALYZE THE TEXT**
 
-        **CHAIN OF THOUGHT PROCESS - FOLLOW THESE STEPS:**
-
-        **STEP 1: ANALYZE THE TEXT**
         Before creating questions, identify:
         - Key concepts, principles, and relationships in the text
         - Important processes, mechanisms, or procedures described
         - Potential misconceptions or common errors learners might have
         - Real-world applications or scenarios where this knowledge applies
 
-        **STEP 2: DRAFT QUESTIONS**
-        For each question:
-        - Create a scenario or context that requires applying the concept
-        - Ensure the question stem is clear and unambiguous
-        - Target the specified Bloom's taxonomy level
-        - Avoid "What is..." questions unless at 'remember' level
+        **DESIGN RULES:**
 
-        **STEP 3: ENGINEER PLAUSIBLE DISTRACTORS**
-        For each wrong answer (distractor):
-        - Base it on common misconceptions or partial understanding
-        - Make it tempting to someone with incomplete knowledge
-        - Ensure it's clearly wrong to someone who fully understands
-        - Avoid obviously absurd or unrelated options
+        1. **CLARITY (Language):**
+           - Use standard, professional English.
+           - Avoid convoluted sentence structures.
+           - **Bad:** "Which of the following creates a negation of the aforementioned principle?"
+           - **Good:** "Which statement contradicts the principle described above?"
 
-        **STEP 4: VALIDATE QUALITY**
-        Ensure each question:
-        - Has exactly one clearly correct answer
-        - Has three plausible but incorrect distractors
-        - Includes a detailed rationale explaining the reasoning
-        - Aligns with the difficulty level: ${promptDifficulty}
+        2. **RIGOR (Concepts):**
+           - Do not make the questions too easy. Avoid simple definitions if the level is 'apply' or 'analyze'.
+           - Require the student to think about the relationship between concepts.
+           - Scenarios are good, but keep them concise (under 50 words).
+
+        3. **DISTRACTORS (The Wrong Answers):**
+           - **Plausible:** Wrong answers should look correct to a student who did not study.
+           - **No Giveaways:** Ensure the correct answer is roughly the same length and detail as the wrong answers.
+           - **Definitive:** While plausible, the wrong answers must be objectively incorrect. Do not use ambiguous options that could be argued as "partially correct."
+
+        4. **RATIONALE:**
+           - Provide a clear explanation that reinforces the learning. Explain why the correct answer is the best choice.
 
         ---
 
         **OUTPUT FORMAT:**
         Return ONLY a valid JSON object. Do NOT include any markdown formatting, explanations, or text outside the JSON.
-
+        
         Required structure:
         {
-        "analysis": "Your Step 1 analysis of key concepts and potential question areas (2-3 sentences)",
+        "analysis": "Brief analysis of the key concepts selected",
         "questions": [
             {
-            "questiontext": "Complete question with scenario/context...",
-            "optiona": "Plausible distractor based on misconception A",
-            "optionb": "Plausible distractor based on misconception B",
-            "optionc": "Correct answer with proper reasoning",
-            "optiond": "Plausible distractor based on misconception D",
+            "questiontext": "Question stem...",
+            "optiona": "Distractor 1",
+            "optionb": "Distractor 2",
+            "optionc": "Correct Answer",
+            "optiond": "Distractor 3",
             "correctanswer": "C",
             "difficulty": "${(promptDifficulty === 'mixed' || promptDifficulty.startsWith('VARIES')) ? 'easy|medium|hard' : promptDifficulty}",
             "cognitive_level": "remember|understand|apply|analyze|evaluate|create",

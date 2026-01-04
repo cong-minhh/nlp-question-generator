@@ -8,6 +8,7 @@ const { ensureUploadsDirectory } = require('./utils/fileUtils');
 const ProviderManager = require('./providers/providerManager');
 const ErrorHandler = require('./utils/errorHandler');
 const cliUI = require('./cli/ascii');
+const { logger } = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -62,6 +63,7 @@ async function initializeServer() {
                 const SetupManager = require('./setup');
                 const setup = new SetupManager();
                 await setup.run();
+                logger.info('Setup complete, restarting server');
                 console.log('\nSetup complete! Restart the server to continue.\n');
                 process.exit(0);
             }
@@ -86,7 +88,7 @@ async function initializeServer() {
                 })
             );
         } catch (err) {
-            console.warn('Failed to load API documentation:', err.message);
+            logger.warn('Failed to load API documentation', { error: err.message });
         }
 
         // Initialize provider manager
@@ -173,6 +175,8 @@ async function initializeServer() {
 
         // Start server
         app.listen(PORT, () => {
+            logger.info(`Server started`, { port: PORT, env: process.env.NODE_ENV });
+            
             console.log(`\n${cliUI.colors.green}Server is ready!${cliUI.colors.reset}`);
             console.log(`${cliUI.colors.cyan}NLP Question Generator running on port ${PORT}${cliUI.colors.reset}`);
 
@@ -181,11 +185,14 @@ async function initializeServer() {
             const hasApiKey = process.env.SERVER_API_KEY && process.env.SERVER_API_KEY.trim() !== '';
 
             if (apiMode === 'private' && hasApiKey) {
+                logger.info('Security mode: PRIVATE (Authenticated)');
                 console.log(`\n${cliUI.colors.green}Security: PRIVATE MODE (API key required)${cliUI.colors.reset}`);
             } else if (apiMode === 'private' && !hasApiKey) {
+                logger.warn('Security mode: PRIVATE but missing API key');
                 console.log(`\n${cliUI.colors.yellow}Security: PRIVATE MODE but no API key set!${cliUI.colors.reset}`);
                 console.log(`${cliUI.colors.gray}   Run 'npm run generate-key' to create an API key${cliUI.colors.reset}`);
             } else {
+                logger.info('Security mode: PUBLIC (No authentication)');
                 console.log(`\n${cliUI.colors.yellow}Security: PUBLIC MODE (no authentication)${cliUI.colors.reset}`);
                 console.log(`${cliUI.colors.gray}Set API_MODE=private in .env for production${cliUI.colors.reset}`);
             }
@@ -234,7 +241,7 @@ async function checkSetupNeeded() {
             return match && match[1].trim().length > 0;
         });
     } catch (error) {
-        console.warn('Could not read .env file:', error.message);
+        logger.error('Error reading .env file', error);
         return {
             shouldSetup: true,
             reason: 'Error reading .env file'

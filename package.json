@@ -12,6 +12,7 @@
     "setup": "node setup.js",
     "config": "node cli/cli.js config",
     "test": "node cli/cli.js test",
+    "test:utils": "node tests/test_core.js && node tests/test_content.js && node tests/test_jobs.js && node tests/test_ai_logic.js",
     "cli": "node cli/cli.js",
     "generate-key": "node utils/generateApiKey.js",
     "setup:python": "services/python/venv/bin/pip install -r services/python/requirements.txt",
