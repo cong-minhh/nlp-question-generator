@@ -5,6 +5,7 @@ const fileProcessingService = require('../services/FileProcessingService');
 const { cleanupFiles } = require('../utils/fileUtils');
 const GeminiQuestionGenerator = require('../services/questionGenerator');
 const { authenticate, optionalAuth } = require('../middleware/auth');
+const SessionAnalyzer = require('../services/sessionAnalyzer');
 const {
     validateTextInput,
     validateNumQuestions,
@@ -202,6 +203,31 @@ router.post('/generate-from-files', authenticate, upload.array('files', 10), asy
         console.error('API Error:', error);
         logger.error('API Error', error);
         res.status(500).json(createErrorResponse(`Failed to generate questions from files: ${error.message}`, 500));
+    }
+});
+
+
+/**
+ * POST endpoint to analyze session data
+ * Body: { session_data: Object, options: Object }
+ */
+router.post('/analyze-session', authenticate, async (req, res) => {
+    try {
+        const { session_data, options } = req.body;
+
+        if (!session_data) {
+            return res.status(400).json(createErrorResponse('Missing session_data', 400));
+        }
+
+        const providerManager = req.app.locals.providerManager;
+        const sessionAnalyzer = new SessionAnalyzer(providerManager);
+
+        const analysis = await sessionAnalyzer.analyzeSession(session_data, options);
+
+        res.json(createSuccessResponse(analysis));
+    } catch (error) {
+        logger.error('Analysis Error', error);
+        res.status(500).json(createErrorResponse(`Failed to analyze session: ${error.message}`, 500));
     }
 });
 
