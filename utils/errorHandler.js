@@ -2,6 +2,8 @@
  * Centralized Error Handler
  * Provides consistent error handling and categorization
  */
+const { logger } = require('./logger');
+
 class ErrorHandler {
     /**
      * Error categories
@@ -160,11 +162,11 @@ class ErrorHandler {
         // Log based on severity
         if (category === this.ErrorTypes.AUTHENTICATION || 
             category === this.ErrorTypes.CONFIGURATION) {
-            console.error('❌ Critical Error:', JSON.stringify(logData, null, 2));
+            logger.error('❌ Critical Error:', JSON.stringify(logData, null, 2));
         } else if (isTransient) {
-            console.warn('⚠ Transient Error:', logData.message);
+            logger.warn('⚠ Transient Error:', logData.message);
         } else {
-            console.error('❌ Error:', logData.message);
+            logger.error('❌ Error:', logData.message);
         }
     }
 

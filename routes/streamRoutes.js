@@ -12,12 +12,12 @@
 // /**
 //  * POST /stream/generate
 //  * Stream questions as they are generated
-//  * Body: { text: string, num_questions?: number, bloomLevel?: string, difficulty?: string }
+//  * Body: { text: string, numQuestions?: number, bloomLevel?: string, difficulty?: string }
 //  */
 // router.post('/generate', authenticate, async (req, res) => {
 //     try {
-//         const { text, num_questions, numQuestions, bloomLevel, difficulty, noCache } = req.body;
-//         const requestedQuestions = num_questions || numQuestions || 10;
+//         const { text, numQuestions, bloomLevel, difficulty, noCache } = req.body;
+//         const requestedQuestions = numQuestions || numQuestions || 10;
 
 //         // Validate input
 //         const textValidation = validateTextInput(text);
@@ -60,7 +60,6 @@
 //         }
 
 //         // Check if parallel processing will be used
-//         const numQuestions = requestedQuestions;
 //         const useParallel = numQuestions >= 20;
 
 //         if (useParallel) {
@@ -131,8 +130,8 @@
 //  */
 // router.post('/generate-from-files', authenticate, async (req, res) => {
 //     try {
-//         const { filePaths, num_questions, numQuestions, bloomLevel, difficulty } = req.body;
-//         const requestedQuestions = num_questions || numQuestions || 10;
+//         const { filePaths, numQuestion, bloomLevel, difficulty } = req.body;
+//         const requestedQuestions = numQuestions || numQuestions || 10;
 
 //         if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
 //             StreamHandler.initializeStream(res);

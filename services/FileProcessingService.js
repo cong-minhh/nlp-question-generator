@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const officeParser = require('officeparser'); 
+const { logger } = require('../utils/logger');
 
 // Unified Processors
 const { processPdf } = require('../utils/processors/PdfProcessor');
@@ -17,7 +18,7 @@ class FileProcessingService {
      */
     async processFile(filePath, originalName, options = {}) {
         const ext = path.extname(originalName).toLowerCase();
-        console.log(`[FileProcessingService] Processing ${originalName} (${ext})`);
+        logger.info(`[FileProcessingService] Processing ${originalName} (${ext})`);
 
         let result = { text: '', images: [], pages: [] };
 
@@ -67,7 +68,7 @@ class FileProcessingService {
             };
 
         } catch (error) {
-            console.error(`Error processing ${originalName}:`, error);
+            logger.error(`Error processing ${originalName}:`, error);
             throw new Error(`Failed to process ${originalName}: ${error.message}`);
         }
     }

@@ -17,7 +17,7 @@ const router = express.Router();
 
 /**
  * POST endpoint to generate questions
- * Body: { text: string, num_questions?: number }
+ * Body: { text: string, numQuestions?: number }
  * Requires authentication in private mode
  */
 router.post('/generate', authenticate, async (req, res) => {
@@ -25,9 +25,8 @@ router.post('/generate', authenticate, async (req, res) => {
         // Get question generator from app.locals (initialized in server.js)
         const questionGenerator = req.app.locals.questionGenerator;
 
-        // Accept both num_questions and numQuestions for flexibility
-        const { text, num_questions, numQuestions } = req.body;
-        const requestedQuestions = num_questions || numQuestions || 10;
+        const { text, numQuestions } = req.body;
+        const requestedQuestions = numQuestions || 10;
 
         // Validate input
         const textValidation = validateTextInput(text);
@@ -46,163 +45,10 @@ router.post('/generate', authenticate, async (req, res) => {
         // Return success response
         res.json(createSuccessResponse(result));
     } catch (error) {
-        if (uploadedFiles.length > 0) {
-            await cleanupFiles(uploadedFiles.map(f => f.path));
-        }
+
 
         logger.error('API Error', error);
         res.status(500).json(createErrorResponse(`Failed to generate questions: ${error.message}`, 500));
-    }
-});
-
-/**
- * POST endpoint to generate questions from uploaded files
- * Body: files (multipart/form-data), num_questions (optional)
- * Requires authentication in private mode
- */
-router.post('/generate-from-files', authenticate, upload.array('files', 10), async (req, res) => {
-    const uploadedFiles = req.files || [];
-
-    try {
-        // Get question generator from app.locals (initialized in server.js)
-        const questionGenerator = req.app.locals.questionGenerator;
-
-        // Validate files were uploaded
-        if (!uploadedFiles || uploadedFiles.length === 0) {
-            return res.status(400).json(createErrorResponse(
-                'No files uploaded. Please upload at least one file (PDF, DOC, DOCX, PPT, PPTX, or TXT)',
-                400
-            ));
-        }
-
-        // Accept both num_questions and numQuestions for flexibility
-        logger.debug('Generate from files request', { body: req.body });
-        const requestedQuestions = req.body.num_questions || req.body.numQuestions || 10;
-        const numQuestionsValidation = validateNumQuestions(requestedQuestions);
-        if (!numQuestionsValidation.valid) {
-            await cleanupFiles(uploadedFiles.map(f => f.path));
-            return res.status(400).json(createErrorResponse(numQuestionsValidation.error, 400));
-        }
-
-        logger.info(`Processing ${uploadedFiles.length} file(s)`);
-
-        // Common options for processing (like page range for PDFs)
-        // Note: Global page range applies to ALL files in this stateless request.
-        const pageStart = req.body.page_start || req.body.pageStart ? parseInt(req.body.page_start || req.body.pageStart) : undefined;
-        const pageEnd = req.body.page_end || req.body.pageEnd ? parseInt(req.body.page_end || req.body.pageEnd) : undefined;
-        
-        logger.debug('File processing options', { pageStart, pageEnd });
-        
-        // ---------------------------------------------------------
-        // REFACTOR: Use ContentFilter for unified logic
-        // ---------------------------------------------------------
-        
-        let allTextParts = [];
-        let allImages = [];
-        const fileInfo = []; // To track status per file
-
-        for (const file of uploadedFiles) {
-            try {
-                // 1. Process File (Extract structure: pages, images, text)
-                // We use processFile directly instead of processFiles to have control
-                const extractionResult = await fileProcessingService.processFile(
-                    file.path, 
-                    file.originalname, 
-                    { pageStart, pageEnd } 
-                );
-
-                // 2. Apply Content Filter
-                // In stateless mode, we include ALL extracted content by default (no specific includeSlides/includeImages)
-                // But we use ContentFilter.apply to ensure consistent formatting logic.
-                const filteredContent = require('../utils/ContentFilter').apply(extractionResult, {
-                    // Implicitly include all since we don't pass specific IDs
-                });
-
-                // 3. Aggregate Results
-                if (filteredContent.text && filteredContent.text.trim()) {
-                    allTextParts.push(filteredContent.text);
-                }
-
-                if (filteredContent.images && filteredContent.images.length > 0) {
-                    allImages.push(...filteredContent.images);
-                }
-
-                // Track success status
-                fileInfo.push({
-                    name: file.originalname,
-                    size: file.size,
-                    textLength: filteredContent.text.length,
-                    imageCount: filteredContent.images.length,
-                    status: 'success'
-                });
-
-            } catch (fileError) {
-                logger.error(`Error processing file ${file.originalname}`, fileError);
-                fileInfo.push({
-                    name: file.originalname,
-                    size: file.size,
-                    status: 'error',
-                    message: fileError.message
-                });
-            }
-        }
-
-        // Cleanup uploaded files
-        await cleanupFiles(uploadedFiles.map(f => f.path));
-
-        const combinedText = allTextParts.join('\n\n');
-        const totalTextLength = combinedText.length;
-
-        // Check if we have any content
-        if (totalTextLength === 0 && allImages.length === 0) {
-             // Check if all failed
-             const allFailed = fileInfo.every(f => f.status === 'error');
-             if (allFailed) {
-                 return res.status(500).json(createErrorResponse(
-                     'Failed to process any files. See file details for errors.',
-                     500,
-                     { files: fileInfo }
-                 ));
-             }
-
-            return res.status(400).json(createErrorResponse(
-                'No content extracted. Could not extract text or images from any of the uploaded files',
-                400,
-                { files: fileInfo }
-            ));
-        }
-
-        logger.info(`Extraction complete`, { 
-            totalTextLength, 
-            fileCount: uploadedFiles.length, 
-            imageCount: allImages.length 
-        });
-
-        // Generate questions
-        // Construct payload: plain text OR object with text+images
-        const payload = allImages.length > 0 
-            ? { text: combinedText || "Analyze these images and generate questions based on them.", images: allImages }
-            : combinedText;
-
-        const result = await questionGenerator.generateQuestions(payload, { numQuestions: numQuestionsValidation.value });
-
-        // Return response with file info
-        res.json(createSuccessResponse(result, {
-            filesProcessed: uploadedFiles.length,
-            filesWithText: allTextParts.length,
-            totalTextLength,
-            files: fileInfo
-        }));
-
-    } catch (error) {
-        // Cleanup files in case of error
-        if (uploadedFiles.length > 0) {
-            await cleanupFiles(uploadedFiles.map(f => f.path));
-        }
-
-        console.error('API Error:', error);
-        logger.error('API Error', error);
-        res.status(500).json(createErrorResponse(`Failed to generate questions from files: ${error.message}`, 500));
     }
 });
 
@@ -341,29 +187,12 @@ router.get('/', (req, res) => {
                 contentType: 'application/json',
                 body: {
                     text: 'string (required) - The text to generate questions from',
-                    num_questions: 'number (optional) - Number of questions to generate (default: 10, max: 50)'
+                    numQuestions: 'number (optional) - Number of questions to generate (default: 10, max: 50)'
                 },
                 example: {
                     text: 'The mitochondria is the powerhouse of the cell...',
-                    num_questions: 5
+                    numQuestions: 5
                 }
-            },
-            'POST /generate-from-files': {
-                description: 'Generate quiz questions from uploaded files (PDF, DOC, DOCX, PPT, PPTX, TXT)',
-                contentType: 'multipart/form-data',
-                body: {
-                    files: 'file[] (required) - One or more files to extract text from (max 10 files, 50MB each)',
-                    num_questions: 'number (optional) - Number of questions to generate (default: 10, max: 50)',
-                    page_start: 'number (optional) - Start page for PDF extraction (1-based)',
-                    page_end: 'number (optional) - End page for PDF extraction (inclusive)'
-                },
-                supportedFormats: ['PDF', 'DOC', 'DOCX', 'PPT', 'PPTX', 'TXT'],
-                features: [
-                    'Multi-file upload',
-                    'Automatic text extraction',
-                    'Combined question generation',
-                    'Per-file status reporting'
-                ]
             },
             'GET /providers': {
                 description: 'List all available AI providers and their status'

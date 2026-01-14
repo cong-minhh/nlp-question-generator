@@ -1,4 +1,5 @@
 const ErrorHandler = require('./errorHandler');
+const { logger } = require('./logger');
 
 /**
  * Retry Manager with Exponential Backoff
@@ -6,9 +7,9 @@ const ErrorHandler = require('./errorHandler');
  */
 class RetryManager {
     constructor(config = {}) {
-        this.maxRetries = config.maxRetries || 3;
-        this.baseDelay = config.baseDelay || 1000; // 1 second
-        this.maxDelay = config.maxDelay || 30000; // 30 seconds
+        this.maxRetries = config.maxRetries || parseInt(process.env.ERROR_MAX_RETRIES) || 3;
+        this.baseDelay = config.baseDelay || parseInt(process.env.ERROR_BASE_DELAY) || 1000; // 1 second
+        this.maxDelay = config.maxDelay || parseInt(process.env.ERROR_MAX_DELAY) || 30000; // 30 seconds
         this.exponentialBase = config.exponentialBase || 2;
         this.jitter = config.jitter !== false; // Add randomness to prevent thundering herd
     }
@@ -63,7 +64,7 @@ class RetryManager {
                 
                 // Success - log if we had retries
                 if (attempt > 1) {
-                    console.log(`✓ Succeeded on attempt ${attempt}/${maxRetries + 1}`);
+                    logger.info(`✓ Succeeded on attempt ${attempt}/${maxRetries + 1}`);
                 }
                 
                 return result;
@@ -82,7 +83,7 @@ class RetryManager {
                         finalAttempt: true
                     });
                 } else if (canRetry) {
-                    console.warn(`⚠️  Attempt ${attempt}/${maxRetries + 1} failed: ${error.message}`);
+                    logger.warn(`⚠️  Attempt ${attempt}/${maxRetries + 1} failed: ${error.message}`);
                 } else {
                     ErrorHandler.logError(error, {
                         ...context,
@@ -98,7 +99,7 @@ class RetryManager {
 
                 // Calculate delay and wait
                 const delay = this.calculateDelay(attempt);
-                console.log(`Retrying in ${(delay / 1000).toFixed(1)}s...`);
+                logger.info(`Retrying in ${(delay / 1000).toFixed(1)}s...`);
                 
                 // Call onRetry callback if provided
                 if (onRetry) {
@@ -124,14 +125,14 @@ class RetryManager {
         try {
             return await this.executeWithRetry(fn, options);
         } catch (error) {
-            console.warn('⚠️  Primary function failed, trying fallback...');
+            logger.warn('⚠️  Primary function failed, trying fallback...');
             
             try {
                 const result = await fallbackFn(error);
-                console.log('✓ Fallback succeeded');
+                logger.info('✓ Fallback succeeded');
                 return result;
             } catch (fallbackError) {
-                console.error('❌ Fallback also failed');
+                logger.error('❌ Fallback also failed');
                 ErrorHandler.logError(fallbackError, {
                     ...options.context,
                     fallbackFailed: true
@@ -209,7 +210,7 @@ class RetryManager {
             
             // Try to close circuit
             state.state = 'half-open';
-            console.log('Circuit breaker: half-open (testing)');
+            logger.info('Circuit breaker: half-open (testing)');
         }
 
         try {
@@ -219,7 +220,7 @@ class RetryManager {
             if (state.state === 'half-open') {
                 state.state = 'closed';
                 state.failures = 0;
-                console.log('✓ Circuit breaker: closed (recovered)');
+                logger.info('✓ Circuit breaker: closed (recovered)');
             }
             
             return result;
@@ -229,7 +230,7 @@ class RetryManager {
 
             if (state.failures >= threshold) {
                 state.state = 'open';
-                console.error(`❌ Circuit breaker: open (${state.failures} failures)`);
+                logger.error(`❌ Circuit breaker: open (${state.failures} failures)`);
             }
 
             throw error;
@@ -260,7 +261,7 @@ class RetryManager {
             lastFailure: null,
             state: 'closed'
         };
-        console.log('✓ Circuit breaker reset');
+        logger.info('✓ Circuit breaker reset');
     }
 }
 

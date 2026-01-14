@@ -4,7 +4,14 @@ const ParallelProcessor = require('../utils/parallelProcessor');
 const QualityScorer = require('../utils/qualityScorer');
 const Deduplicator = require('../utils/deduplicator');
 const DifficultyBalancer = require('../utils/difficultyBalancer');
+const KeywordExtractor = require('../utils/nlp/keywordExtractor');
+const DifficultyEstimator = require('../utils/nlp/difficultyEstimator');
+const AttentionDetector = require('../utils/nlp/attentionDetector');
 const { logger } = require('../utils/logger');
+const fileProcessingService = require('./FileProcessingService');
+const ContentFilter = require('../utils/ContentFilter');
+const path = require('path');
+const fs = require('fs');
 
 /**
  * Multi-Provider Question Generation Service
@@ -24,29 +31,12 @@ class MultiProviderQuestionGenerator {
             this.providerManager = new ProviderManager(providerManagerOrConfig);
         }
         // If providerManager is not set, it will be set manually later
-        this.cacheManager = new CacheManager({
-            enabled: process.env.CACHE_ENABLED !== 'false',
-            ttlDays: parseInt(process.env.CACHE_TTL_DAYS) || 30,
-            maxEntries: parseInt(process.env.CACHE_MAX_ENTRIES) || 1000
-        });
-        this.parallelProcessor = new ParallelProcessor({
-            enabled: process.env.PARALLEL_ENABLED !== 'false',
-            chunkSize: parseInt(process.env.PARALLEL_CHUNK_SIZE) || 10,
-            maxWorkers: parseInt(process.env.PARALLEL_MAX_WORKERS) || 5,
-            threshold: parseInt(process.env.PARALLEL_THRESHOLD) || 20
-        });
+        // If providerManager is not set, it will be set manually later
+        this.cacheManager = new CacheManager();
+        this.parallelProcessor = new ParallelProcessor();
         this.qualityScorer = null; // Initialized later with provider
-        this.deduplicator = new Deduplicator({
-            enabled: process.env.DEDUP_ENABLED !== 'false',
-            threshold: parseInt(process.env.DEDUP_THRESHOLD) || 85,
-            compareOptions: process.env.DEDUP_COMPARE_OPTIONS !== 'false',
-            keepBest: process.env.DEDUP_KEEP_BEST !== 'false'
-        });
-        this.difficultyBalancer = new DifficultyBalancer({
-            enabled: process.env.DIFFICULTY_BALANCE_ENABLED !== 'false',
-            tolerance: parseFloat(process.env.DIFFICULTY_BALANCE_TOLERANCE) || 0.10,
-            maxRetries: parseInt(process.env.DIFFICULTY_BALANCE_MAX_RETRIES) || 2
-        });
+        this.deduplicator = new Deduplicator();
+        this.difficultyBalancer = new DifficultyBalancer();
         this.initialized = false;
     }
 
@@ -77,14 +67,9 @@ class MultiProviderQuestionGenerator {
             }
 
             this.qualityScorer = new QualityScorer({
-                enabled: process.env.QUALITY_SCORING_ENABLED !== 'false',
-                minScore: parseInt(process.env.QUALITY_MIN_SCORE) || 6,
-                maxRetries: parseInt(process.env.QUALITY_MAX_RETRIES) || 2,
-                scorerProvider: scorerProvider,
-                useQuickScore: process.env.QUALITY_QUICK_SCORE === 'true'
+                scorerProvider: scorerProvider
             });
 
-            this.initialized = true;
             this.initialized = true;
             logger.info('Multi-provider question generator initialized');
             if (this.qualityScorer.enabled) {
@@ -113,14 +98,75 @@ class MultiProviderQuestionGenerator {
             return this.generateDistributedQuestions(text, options);
         }
 
+        // --- Input Normalization ---
+        let promptText = text;
+        let isMultimodal = false;
+
+        if (typeof text === 'object' && text !== null) {
+            // Handle structured input { text: "...", images: [...] }
+            promptText = text.text || '';
+            isMultimodal = true;
+        }
+
+        // --- NLP Analysis ---
+        let nlpContext = '';
+        if (promptText && typeof promptText === 'string') {
+            const keywords = KeywordExtractor.extractKeywords(promptText, 8);
+            if (keywords.length > 0) {
+                 nlpContext += `\nKey Concepts: ${keywords.join(', ')}.`;
+            }
+
+            const difficultyEst = DifficultyEstimator.estimateDifficulty(promptText);
+            // If user didn't specify difficulty, maybe we align with text? 
+            // Or just log it.
+            logger.debug(`Text Difficulty Analysis:`, difficultyEst);
+            
+            const importantSections = AttentionDetector.detectImportantSections(promptText);
+            if (importantSections.length > 0) {
+                 // Take top 2 important sentences to reinforce focus
+                 const topFocus = importantSections.slice(0, 2).map(s => s.text).join(' ');
+                 nlpContext += `\nFocus on this key information: "${topFocus}"`;
+            }
+        }
+        
+        // Append NLP context to options if prompt supports it (or append to text efficiently)
+        // For now, we'll append to the text IF it fits, or add to system instruction if we could.
+        // Easiest is to prepend to text with a separator, or passed as 'context' option found provide uses.
+        // Let's assume providers use 'text' as the main prompt.
+        if (nlpContext) {
+            // We append it to the prompt text to guide the model.
+            // Using a distinct separator.
+            const promptEnhancement = `\n\n[Context Analysis]${nlpContext}\n`;
+            
+            // Apply enhancement to the appropriate place
+            if (isMultimodal) {
+                 // Modify the text property of the object
+                 // We create a shallow copy to avoid mutating the original object if it's reused
+                 text = { ...text };
+                 if ((text.text || '').length + promptEnhancement.length < (options.maxTextLength || 1000000)) {
+                     text.text = (text.text || '') + promptEnhancement;
+                 }
+            } else {
+                // Regular string
+                if (promptText.length + promptEnhancement.length < options.maxTextLength || 1000000) {
+                    text += promptEnhancement;
+                }
+            }
+        }
+
         // Check if text is too large for model context
         // Default to 1,000,000 characters (~250k tokens) if not set in env
         // This is safe for Gemini 1.5 but prevents massive memory abuse
         const MAX_TEXT_CHARS = parseInt(process.env.MAX_TEXT_LENGTH) || 1000000;
         
-        if (text.length > MAX_TEXT_CHARS) {
-            logger.warn(`Text too large (${text.length} chars). Truncating to ${MAX_TEXT_CHARS} chars.`);
-            text = text.substring(0, MAX_TEXT_CHARS);
+        // Check length against promptText (the actual string)
+        if (promptText.length > MAX_TEXT_CHARS) {
+            logger.warn(`Text too large (${promptText.length} chars). Truncating to ${MAX_TEXT_CHARS} chars.`);
+            if (isMultimodal) {
+                text.text = promptText.substring(0, MAX_TEXT_CHARS);
+            } else {
+                text = promptText.substring(0, MAX_TEXT_CHARS);
+            }
         }
 
         const useParallel = options.parallel !== false && this.parallelProcessor.shouldUseParallel(numQuestions);
@@ -209,7 +255,7 @@ class MultiProviderQuestionGenerator {
 
             // Apply deduplication if enabled and not disabled for this request
             if (options.deduplicate !== false && this.deduplicator && this.deduplicator.enabled) {
-                let dedupResult = this.deduplicator.deduplicate(
+                let dedupResult = await this.deduplicator.deduplicate(
                     result.questions,
                     result.metadata?.qualityScoring?.statistics ? result.questions.map((_, i) => ({ score: 7 })) : null
                 );
@@ -263,7 +309,7 @@ class MultiProviderQuestionGenerator {
                                 const combined = [...currentQuestions, ...replenishResult.questions];
 
                                 // Re-run deduplication on combined set
-                                const newDedupResult = this.deduplicator.deduplicate(combined);
+                                const newDedupResult = await this.deduplicator.deduplicate(combined);
                                 currentQuestions = newDedupResult.questions;
 
                                 logger.info(`Replenishment attempt ${attempts} result: Total now ${currentQuestions.length}/${numQuestions}`);
@@ -412,7 +458,7 @@ class MultiProviderQuestionGenerator {
 
         distributionPlan.breakdown = Object.values(counts);
 
-        logger.info('Generating with single request distribution plan', { plan: distributionPlan });
+        // logger.info('Generating with single request distribution plan', { plan: distributionPlan });
 
         // 3. Execute Single Request
         const singleRequestOptions = {
@@ -583,47 +629,74 @@ class MultiProviderQuestionGenerator {
      * @returns {Promise<Object>} - Generated questions
      */
     async generateFromFiles(filePaths, options = {}) {
-        const { processFiles } = require('./textExtractor');
-        const path = require('path');
-        const fs = require('fs');
-
         try {
             logger.info('Processing files for extraction...');
+            
+            let allTextParts = [];
+            let allImages = [];
+            const fileInfo = [];
 
-            // Map file paths to the structure expected by processFiles
-            const files = filePaths.map(filePath => ({
-                path: filePath,
-                originalname: path.basename(filePath),
-                size: fs.statSync(filePath).size
-            }));
+            for (const filePath of filePaths) {
+                try {
+                    const result = await fileProcessingService.processFile(
+                        filePath, 
+                        path.basename(filePath), 
+                        options
+                    );
 
-            const extractionResult = await processFiles(files);
-            const extractedText = extractionResult.combinedText;
-            const extractedImages = extractionResult.extractedImages || [];
+                    const filtered = ContentFilter.apply(result, options);
 
-            // If we have images, we can proceed even with empty text (assuming the provider supports it)
-            // But we should warn if NO content at all
-            if (!extractedText.trim() && extractedImages.length === 0) {
-                throw new Error('No text or images could be extracted from the provided files');
-            }
+                    if (filtered.text && filtered.text.trim()) {
+                        allTextParts.push(filtered.text);
+                    }
+                    if (filtered.images && filtered.images.length > 0) {
+                        allImages.push(...filtered.images);
+                    }
+                    
+                    fileInfo.push({
+                        name: path.basename(filePath),
+                        status: 'success',
+                        textLength: filtered.text?.length || 0,
+                        imageCount: filtered.images?.length || 0
+                    });
 
-            logger.info(`Extracted content`, { chars: extractedText.length, images: extractedImages.length });
-
-            // If we have images, we skip the text validation that requires 50 chars minimum
-            // Because the text might just be "Analyze this image"
-            if (extractedImages.length === 0) {
-                const validation = this.validateInput(extractedText);
-                if (!validation.valid) {
-                    throw new Error(`Invalid extracted text: ${validation.error}`);
+                } catch (fileError) {
+                    logger.error(`Error processing file ${filePath}`, fileError);
+                    fileInfo.push({
+                        name: path.basename(filePath),
+                        status: 'error',
+                        message: fileError.message
+                    });
                 }
             }
 
-            // Construct payload: plain text OR object with text+images
-            const payload = extractedImages.length > 0 
-                ? { text: extractedText || "Analyze these images and generate questions based on them.", images: extractedImages }
-                : extractedText;
+            const combinedText = allTextParts.join('\n\n');
 
-            return await this.generateQuestions(payload, options);
+            // Check if we have any content
+            if (!combinedText.trim() && allImages.length === 0) {
+                const allFailed = fileInfo.every(f => f.status === 'error');
+                if (allFailed) {
+                     throw new Error('Failed to process any files. Check logs for details.');
+                }
+                throw new Error('No content could be extracted from the provided files');
+            }
+
+            logger.info(`Extracted content`, { chars: combinedText.length, images: allImages.length });
+
+            // Construct payload
+            const payload = allImages.length > 0 
+                ? { text: combinedText || "Analyze these images and generate questions based on them.", images: allImages }
+                : combinedText;
+
+            const result = await this.generateQuestions(payload, options);
+            
+            // Attach file stats to metadata
+            if (!result.metadata) result.metadata = {};
+            result.metadata.files = fileInfo;
+            result.metadata.totalTextLength = combinedText.length;
+            
+            return result;
+
         } catch (error) {
             logger.error('File processing failed', error);
             throw error;

@@ -1,4 +1,5 @@
 const CostTracker = require('./costTracker');
+const { logger } = require('./logger');
 
 /**
  * Smart Provider Router
@@ -31,7 +32,7 @@ class ProviderRouter {
         const healthyProviders = this.filterHealthyProviders(availableProviders);
         
         if (healthyProviders.length === 0) {
-            console.warn('⚠️  No healthy providers available, using any available');
+            logger.warn('⚠️  No healthy providers available, using any available');
             return availableProviders[0];
         }
 
@@ -70,7 +71,7 @@ class ProviderRouter {
         const costs = this.costTracker.compareCosts(inputText, numQuestions, providers);
         const selected = costs[0].provider;
 
-        console.log(`Selected ${selected} (cheapest: $${costs[0].totalCost.toFixed(6)})`);
+        logger.info(`Selected ${selected} (cheapest: $${costs[0].totalCost.toFixed(6)})`);
         return selected;
     }
 
@@ -81,7 +82,7 @@ class ProviderRouter {
      */
     selectBySpeed(providers) {
         const selected = this.costTracker.getFastestProvider(providers);
-        console.log(`Selected ${selected} (fastest)`);
+        logger.info(`Selected ${selected} (fastest)`);
         return selected;
     }
 
@@ -92,7 +93,7 @@ class ProviderRouter {
      */
     selectByQuality(providers) {
         const selected = this.costTracker.getBestQualityProvider(providers);
-        console.log(`Selected ${selected} (best quality)`);
+        logger.info(`Selected ${selected} (best quality)`);
         return selected;
     }
 
@@ -140,7 +141,7 @@ class ProviderRouter {
         scores.sort((a, b) => b.totalScore - a.totalScore);
         const selected = scores[0].provider;
 
-        console.log(`Selected ${selected} (balanced score: ${scores[0].totalScore.toFixed(1)})`);
+        logger.info(`Selected ${selected} (balanced score: ${scores[0].totalScore.toFixed(1)})`);
         return selected;
     }
 
@@ -157,7 +158,7 @@ class ProviderRouter {
         const selected = providers[this.roundRobinIndex % providers.length];
         this.roundRobinIndex++;
 
-        console.log(`Selected ${selected} (round-robin)`);
+        logger.info(`Selected ${selected} (round-robin)`);
         return selected;
     }
 
@@ -263,7 +264,7 @@ class ProviderRouter {
         health.lastFailure = Date.now();
         health.successRate = health.successes / health.requests;
 
-        console.warn(`⚠️  Provider ${provider} failure: ${error.message}`);
+        logger.warn(`⚠️  Provider ${provider} failure: ${error.message}`);
     }
 
     /**
@@ -299,9 +300,9 @@ class ProviderRouter {
         
         if (validStrategies.includes(strategy)) {
             this.routingStrategy = strategy;
-            console.log(`✓ Routing strategy set to: ${strategy}`);
+            logger.info(`✓ Routing strategy set to: ${strategy}`);
         } else {
-            console.warn(`⚠️  Invalid strategy: ${strategy}`);
+            logger.warn(`⚠️  Invalid strategy: ${strategy}`);
         }
     }
 

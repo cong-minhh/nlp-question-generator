@@ -79,9 +79,7 @@ async function initializeServer() {
             app.use(
                 '/docs',
                 apiReference({
-                    spec: {
-                        url: '/openapi.json',
-                    },
+                    url: '/openapi.json',
                     theme: 'purple',
                     layout: 'modern',
                     darkMode: true,
@@ -119,8 +117,6 @@ async function initializeServer() {
         // Initialize job queue with store
         const JobQueue = require('./utils/jobQueue');
         const jobQueue = new JobQueue({
-            enabled: process.env.QUEUE_ENABLED !== 'false',
-            maxConcurrent: parseInt(process.env.QUEUE_WORKERS) || 3,
             jobStore: jobStore
         });
 
@@ -163,7 +159,6 @@ async function initializeServer() {
         // cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/providers`, 'List all providers');
         // cliUI.showEndpoint('GET', `http://localhost:${PORT}/api/current-provider`, 'Current provider info');
         // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate`, 'Generate questions from text');
-        // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/generate-from-files`, 'Generate from uploaded files');
         // cliUI.showEndpoint('POST', `http://localhost:${PORT}/api/switch-provider`, 'Switch between AI providers');
 
         // Show supported file formats

@@ -2,12 +2,14 @@
  * Parallel Question Generation Processor
  * Splits large requests into chunks and processes them in parallel
  */
+const { logger } = require('./logger');
+
 class ParallelProcessor {
     constructor(config = {}) {
-        this.enabled = config.enabled !== false;
-        this.chunkSize = config.chunkSize || 10;
-        this.maxWorkers = config.maxWorkers || 5;
-        this.threshold = config.threshold || 20; // Minimum questions to trigger parallel
+        this.enabled = config.enabled !== undefined ? config.enabled : (process.env.PARALLEL_ENABLED !== 'false');
+        this.chunkSize = config.chunkSize || parseInt(process.env.PARALLEL_CHUNK_SIZE) || 10;
+        this.maxWorkers = config.maxWorkers || parseInt(process.env.PARALLEL_MAX_WORKERS) || 5;
+        this.threshold = config.threshold || parseInt(process.env.PARALLEL_THRESHOLD) || 20; // Minimum questions to trigger parallel
     }
 
     /**
@@ -58,7 +60,7 @@ class ParallelProcessor {
                     return result;
                 })
                 .catch(error => {
-                    console.error(`Chunk ${chunkIndex} failed:`, error.message);
+                    logger.error(`Chunk ${chunkIndex} failed:`, error.message);
                     const errorResult = {
                         success: false,
                         error: error.message,
@@ -99,16 +101,16 @@ class ParallelProcessor {
             return await generateFn(text, { ...options, numQuestions: totalQuestions });
         }
 
-        console.log(`Using parallel generation for ${totalQuestions} questions`);
+        logger.info(`Using parallel generation for ${totalQuestions} questions`);
         
         const chunks = this.calculateChunks(totalQuestions);
-        console.log(`Split into ${chunks.length} chunks: [${chunks.join(', ')}]`);
+        logger.info(`Split into ${chunks.length} chunks: [${chunks.join(', ')}]`);
 
         const startTime = Date.now();
 
         // Process chunks in parallel
         const results = await this.processInParallel(chunks, async (chunkSize, chunkIndex) => {
-            console.log(`Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunkSize} questions)`);
+            logger.info(`Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunkSize} questions)`);
             
             try {
                 const result = await generateFn(text, {
@@ -117,7 +119,7 @@ class ParallelProcessor {
                     noCache: options.noCache || false // Allow caching per chunk
                 });
 
-                console.log(`✓ Chunk ${chunkIndex + 1} complete (${result.questions?.length || 0} questions)`);
+                logger.info(`✓ Chunk ${chunkIndex + 1} complete (${result.questions?.length || 0} questions)`);
                 
                 return {
                     success: true,
@@ -125,7 +127,7 @@ class ParallelProcessor {
                     metadata: result.metadata || {}
                 };
             } catch (error) {
-                console.error(`✗ Chunk ${chunkIndex + 1} failed:`, error.message);
+                logger.error(`✗ Chunk ${chunkIndex + 1} failed:`, error.message);
                 throw error;
             }
         });
@@ -136,7 +138,7 @@ class ParallelProcessor {
         // Combine results
         const combined = this.combineResults(results, totalQuestions, duration);
         
-        console.log(`✓ Parallel generation complete: ${combined.questions.length} questions in ${duration}s`);
+        logger.info(`✓ Parallel generation complete: ${combined.questions.length} questions in ${duration}s`);
         
         return combined;
     }
@@ -156,11 +158,11 @@ class ParallelProcessor {
         // Collect all questions and errors
         results.forEach((result, index) => {
             if (result && result.success && result.questions) {
-                console.log(`Chunk ${index}: ${result.questions.length} questions`);
+                logger.info(`Chunk ${index}: ${result.questions.length} questions`);
                 allQuestions.push(...result.questions);
                 totalGenerated += result.questions.length;
             } else {
-                console.log(`Chunk ${index}: FAILED - ${result?.error || 'Unknown error'}`);
+                logger.info(`Chunk ${index}: FAILED - ${result?.error || 'Unknown error'}`);
                 errors.push({
                     chunk: index,
                     error: result?.error || 'Unknown error'
@@ -168,7 +170,7 @@ class ParallelProcessor {
             }
         });
 
-        console.log(`Combined total: ${allQuestions.length} questions from ${results.length} chunks`);
+        logger.info(`Combined total: ${allQuestions.length} questions from ${results.length} chunks`);
 
         // Get metadata from first successful result
         const firstSuccess = results.find(r => r && r.success && r.metadata);
@@ -178,7 +180,7 @@ class ParallelProcessor {
             questions: allQuestions,
             metadata: {
                 ...baseMetadata,
-                num_questions: allQuestions.length,
+                numQuestions: allQuestions.length,
                 expected_questions: expectedTotal,
                 parallel: true,
                 chunks: results.length,

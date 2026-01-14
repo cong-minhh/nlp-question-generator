@@ -1,3 +1,5 @@
+const LocalEmbeddings = require('./nlp/embeddings');
+
 /**
  * Text Similarity Calculator
  * Calculates similarity between text strings using various algorithms
@@ -134,17 +136,38 @@ class TextSimilarity {
     }
 
     /**
+     * Calculate deep semantic similarity using embeddings if available
+     * @param {string} str1 
+     * @param {string} str2 
+     * @returns {Promise<number>} 0-100
+     */
+    static async semanticSimilarity(str1, str2) {
+        try {
+            const vec1 = await LocalEmbeddings.getEmbedding(str1);
+            const vec2 = await LocalEmbeddings.getEmbedding(str2);
+
+            if (vec1 && vec2) {
+                return LocalEmbeddings.cosineSimilarity(vec1, vec2) * 100;
+            }
+        } catch (e) {
+            // Ignore embedding errors and fallback
+        }
+        return this.cosineSimilarity(str1, str2);
+    }
+
+    /**
      * Calculate combined similarity score
      * @param {string} str1 - First string
      * @param {string} str2 - Second string
      * @param {Object} weights - Weights for each algorithm
-     * @returns {number} - Combined similarity percentage (0-100)
+     * @returns {Promise<number>|number} - Combined similarity percentage (0-100)
      */
-    static combinedSimilarity(str1, str2, weights = {}) {
+    static async combinedSimilarity(str1, str2, weights = {}) {
         const defaultWeights = {
-            levenshtein: 0.4,
-            jaccard: 0.3,
-            cosine: 0.3
+            levenshtein: 0.3,
+            jaccard: 0.2,
+            cosine: 0.2,
+            semantic: 0.3
         };
 
         const w = { ...defaultWeights, ...weights };
@@ -154,12 +177,26 @@ class TextSimilarity {
 
         const levenshtein = this.levenshteinSimilarity(normalized1, normalized2);
         const jaccard = this.jaccardSimilarity(str1, str2);
-        const cosine = this.cosineSimilarity(str1, str2);
+        
+        // Semantic check is async
+        let semantic = 0;
+        let cosine = 0;
+        
+        // try to use it if loaded.
+        if (LocalEmbeddings.loaded) {
+            semantic = await this.semanticSimilarity(str1, str2);
+        } else {
+            // Fallback: increase cosine weight
+            cosine = this.cosineSimilarity(str1, str2);
+            w.cosine += w.semantic;
+            w.semantic = 0;
+        }
 
         return (
             levenshtein * w.levenshtein +
             jaccard * w.jaccard +
-            cosine * w.cosine
+            cosine * w.cosine +
+            semantic * w.semantic
         );
     }
 
@@ -168,10 +205,10 @@ class TextSimilarity {
      * @param {string} str1 - First string
      * @param {string} str2 - Second string
      * @param {number} threshold - Similarity threshold (0-100)
-     * @returns {boolean} - True if similar
+     * @returns {Promise<boolean>} - True if similar
      */
-    static areSimilar(str1, str2, threshold = 85) {
-        const similarity = this.combinedSimilarity(str1, str2);
+    static async areSimilar(str1, str2, threshold = 85) {
+        const similarity = await this.combinedSimilarity(str1, str2);
         return similarity >= threshold;
     }
 
@@ -179,9 +216,9 @@ class TextSimilarity {
      * Find most similar string from a list
      * @param {string} target - Target string
      * @param {Array<string>} candidates - Candidate strings
-     * @returns {Object} - Most similar match with score
+     * @returns {Promise<Object>} - Most similar match with score
      */
-    static findMostSimilar(target, candidates) {
+    static async findMostSimilar(target, candidates) {
         if (!candidates || candidates.length === 0) {
             return { match: null, similarity: 0, index: -1 };
         }
@@ -190,14 +227,15 @@ class TextSimilarity {
         let bestMatch = null;
         let bestIndex = -1;
 
-        candidates.forEach((candidate, index) => {
-            const similarity = this.combinedSimilarity(target, candidate);
+        for (let i = 0; i < candidates.length; i++) {
+            const candidate = candidates[i];
+            const similarity = await this.combinedSimilarity(target, candidate);
             if (similarity > maxSimilarity) {
                 maxSimilarity = similarity;
                 bestMatch = candidate;
-                bestIndex = index;
+                bestIndex = i;
             }
-        });
+        }
 
         return {
             match: bestMatch,
@@ -210,29 +248,29 @@ class TextSimilarity {
      * Group similar strings together
      * @param {Array<string>} strings - Strings to group
      * @param {number} threshold - Similarity threshold
-     * @returns {Array<Array<number>>} - Groups of indices
+     * @returns {Promise<Array<Array<number>>>} - Groups of indices
      */
-    static groupSimilar(strings, threshold = 85) {
+    static async groupSimilar(strings, threshold = 85) {
         const groups = [];
         const processed = new Set();
 
-        strings.forEach((str1, i) => {
-            if (processed.has(i)) return;
+        for (let i = 0; i < strings.length; i++) {
+            if (processed.has(i)) continue;
 
             const group = [i];
             processed.add(i);
 
-            strings.forEach((str2, j) => {
+            for (let j = 0; j < strings.length; j++) {
                 if (i !== j && !processed.has(j)) {
-                    if (this.areSimilar(str1, str2, threshold)) {
+                    if (await this.areSimilar(strings[i], strings[j], threshold)) {
                         group.push(j);
                         processed.add(j);
                     }
                 }
-            });
+            }
 
             groups.push(group);
-        });
+        }
 
         return groups;
     }

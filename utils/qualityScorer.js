@@ -1,4 +1,5 @@
 const ScoringPrompts = require('./scoringPrompts');
+const { logger } = require('./logger');
 
 /**
  * Question Quality Scoring Engine
@@ -6,12 +7,12 @@ const ScoringPrompts = require('./scoringPrompts');
  */
 class QualityScorer {
     constructor(config = {}) {
-        this.enabled = config.enabled !== false;
-        this.minScore = config.minScore || 6;
-        this.maxRetries = config.maxRetries || 2;
+        this.enabled = config.enabled !== undefined ? config.enabled : (process.env.QUALITY_SCORING_ENABLED !== 'false');
+        this.minScore = config.minScore || parseInt(process.env.QUALITY_MIN_SCORE) || 6;
+        this.maxRetries = config.maxRetries || parseInt(process.env.QUALITY_MAX_RETRIES) || 2;
         this.batchSize = config.batchSize || 5;
         this.scorerProvider = config.scorerProvider || null; // Provider instance for scoring
-        this.useQuickScore = config.useQuickScore || false;
+        this.useQuickScore = config.useQuickScore !== undefined ? config.useQuickScore : (process.env.QUALITY_QUICK_SCORE === 'true');
     }
 
     /**
@@ -78,7 +79,7 @@ class QualityScorer {
             // On error, pass the question (don't block generation)
             // Only log in development
             if (process.env.NODE_ENV === 'development') {
-                console.warn('Scoring failed:', error.message);
+                logger.warn('Scoring failed:', error.message);
             }
             return {
                 score: this.minScore,
@@ -120,7 +121,7 @@ class QualityScorer {
                     scores.push(...batchScores);
                 }
             } catch (error) {
-                console.warn(`Batch scoring failed for questions ${i}-${i + batch.length}:`, error.message);
+                logger.warn(`Batch scoring failed for questions ${i}-${i + batch.length}:`, error.message);
                 // Pass all questions in failed batch
                 batch.forEach(() => {
                     scores.push({
@@ -165,7 +166,7 @@ class QualityScorer {
                 passed: s.score >= this.minScore
             }));
         } catch (error) {
-            console.warn('Batch scoring parse error:', error.message);
+            logger.warn('Batch scoring parse error:', error.message);
             // Fall back to individual scoring
             return await Promise.all(questions.map(q => this.scoreQuestion(q)));
         }
@@ -295,18 +296,18 @@ class QualityScorer {
             };
         }
 
-        console.log(`Scoring ${questions.length} questions (attempt ${attempt}/${this.maxRetries + 1})...`);
+        logger.info(`Scoring ${questions.length} questions (attempt ${attempt}/${this.maxRetries + 1})...`);
 
         const scores = await this.scoreQuestions(questions);
         const filtered = this.filterByScore(questions, scores);
 
         const avgScore = scores.reduce((sum, s) => sum + (s.score || 0), 0) / scores.length;
-        console.log(`✓ Average score: ${avgScore.toFixed(1)}/10`);
-        console.log(`Accepted: ${filtered.accepted.length}, Rejected: ${filtered.rejected.length}, Needs revision: ${filtered.needsRevision.length}`);
+        logger.info(`✓ Average score: ${avgScore.toFixed(1)}/10`);
+        logger.info(`Accepted: ${filtered.accepted.length}, Rejected: ${filtered.rejected.length}, Needs revision: ${filtered.needsRevision.length}`);
 
         // If we have rejected questions and can retry
         if (filtered.rejected.length > 0 && attempt <= this.maxRetries && regenerateFn) {
-            console.log(`Regenerating ${filtered.rejected.length} low-quality questions...`);
+            logger.info(`Regenerating ${filtered.rejected.length} low-quality questions...`);
 
             try {
                 // Regenerate rejected questions
@@ -328,7 +329,7 @@ class QualityScorer {
                     attempts: improved.attempts
                 };
             } catch (error) {
-                console.warn('Regeneration failed:', error.message);
+                logger.warn('Regeneration failed:', error.message);
                 // Return what we have
                 return {
                     questions: filtered.accepted,

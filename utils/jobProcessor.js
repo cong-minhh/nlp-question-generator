@@ -2,6 +2,8 @@
  * Background Job Processor
  * Processes jobs from the queue in the background
  */
+const { logger } = require('./logger');
+
 class JobProcessor {
     constructor(jobQueue, questionGenerator) {
         this.jobQueue = jobQueue;
@@ -14,12 +16,12 @@ class JobProcessor {
      */
     start() {
         if (this.running) {
-            console.log('Job processor already running');
+            logger.info('Job processor already running');
             return;
         }
 
         this.running = true;
-        console.log('Job processor started');
+        logger.info('Job processor started');
 
         // Set the processor function on the queue
         this.jobQueue.setProcessor(async (data, onProgress) => {
@@ -33,7 +35,7 @@ class JobProcessor {
     stop() {
         this.running = false;
         this.jobQueue.stop();
-        console.log('Job processor stopped');
+        logger.info('Job processor stopped');
     }
 
     /**
@@ -78,7 +80,7 @@ class JobProcessor {
             return formattedResult;
 
         } catch (error) {
-            console.error('Job processing error:', error);
+            logger.error('Job processing error:', error);
             throw error;
         }
     }

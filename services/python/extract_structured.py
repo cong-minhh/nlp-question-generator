@@ -21,7 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description='LangExtract Wrapper')
     parser.add_argument('--file', required=True, help='Path to the file to process')
     parser.add_argument('--prompt', required=True, help='Extraction prompt description')
-    parser.add_argument('--model', default='gemini-2.0-flash', help='Model ID to use')
+    parser.add_argument('--model', default='gemini-2.5-flash', help='Model ID to use')
     parser.add_argument('--schema', help='Optional JSON schema for extraction (not fully supported in CLI yet, using prompt mainly)')
     
     args = parser.parse_args()

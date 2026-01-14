@@ -1,5 +1,5 @@
 require('dotenv').config();
-const structuredExtractor = require('./services/structuredExtractor');
+const structuredExtractor = require('../services/structuredExtractor');
 const path = require('path');
 
 async function test() {

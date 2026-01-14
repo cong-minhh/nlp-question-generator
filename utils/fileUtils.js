@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const { logger } = require('./logger');
 
 /**
  * Clean up uploaded files
@@ -12,7 +13,7 @@ async function cleanupFiles(filePaths) {
         } catch (error) {
             // Ignore ENOENT errors (file already deleted)
             if (error.code !== 'ENOENT') {
-                console.error(`Failed to delete file ${filePath}:`, error.message);
+                logger.error(`Failed to delete file ${filePath}:`, error.message);
             }
         }
     }
@@ -26,7 +27,7 @@ async function ensureUploadsDirectory(uploadsDir) {
     try {
         await fs.mkdir(uploadsDir, { recursive: true });
     } catch (error) {
-        console.error('Error creating uploads directory:', error);
+        logger.error('Error creating uploads directory:', error);
     }
 }
 
@@ -64,7 +65,7 @@ function validateNumQuestions(numQuestions) {
     if (isNaN(parsed) || parsed < 1 || parsed > 50) {
         return {
             valid: false,
-            error: 'Invalid input: num_questions must be between 1 and 50'
+            error: 'Invalid input: numQuestions must be between 1 and 50'
         };
     }
 

@@ -15,8 +15,8 @@ class GeminiProvider extends BaseAIProvider {
         this.supportedModels = [
             'gemini-2.5-flash',      // Latest, free tier compatible
             'models/gemini-2.5-flash', // Alternative path
-            'gemini-1.5-flash',      // Older version (may require paid tier)
-            'gemini-1.5-pro',        // Pro version (may require paid tier)
+            'gemini-2.5-flash',      // Older version (may require paid tier)
+            'gemini-2.5-pro',        // Pro version (may require paid tier)
             'gemini-pro'             // Legacy (may require paid tier)
         ];
         this.maxRetries = 3;
@@ -158,7 +158,7 @@ class GeminiProvider extends BaseAIProvider {
                 // Trim to requested number of questions (AI sometimes generates more)
                 if (standardized.questions.length > numQuestions) {
                     standardized.questions = standardized.questions.slice(0, numQuestions);
-                    standardized.metadata.num_questions = numQuestions;
+                    standardized.metadata.numQuestions = numQuestions;
                 }
                 
                 // Add model info to metadata

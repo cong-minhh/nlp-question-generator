@@ -46,7 +46,7 @@ class Logger {
      * Write to file stream (simple append for now)
      */
     write(logString) {
-        // Console output
+        // console output
         console.log(logString);
         
         // File output

@@ -98,7 +98,7 @@ class ConfigManager {
     async showMainMenu() {
         const menu = `
 ┌─────────────────────────────────────────────────────┐
-│    NLP Question Generator - API Key Configuration    │
+│    NLP Question Generator - API Key Configuration   │
 ├─────────────────────────────────────────────────────┤
 │  1. View Current Configuration                      │
 │  2. Configure API Keys                              │
@@ -322,7 +322,6 @@ How to Use:
 
 API Endpoints:
   • POST /api/generate - Generate questions from text
-  • POST /api/generate-from-files - Generate from uploaded files
   • GET /api/providers - List available providers
   • POST /api/switch-provider - Switch between providers
 

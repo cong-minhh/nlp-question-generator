@@ -6,6 +6,7 @@ const fs = require('fs').promises;
 const documentStorage = require('../services/storage/DocumentStorage');
 const fileProcessingService = require('../services/FileProcessingService');
 const ContentFilter = require('../utils/ContentFilter');
+const { logger } = require('../utils/logger');
 
 // Temp upload for multer before moving to storage
 const upload = multer({ dest: 'uploads/temp/' });
@@ -22,7 +23,7 @@ router.post('/inspect', upload.single('file'), async (req, res, next) => {
         const docId = await documentStorage.save(req.file);
         const metadata = await documentStorage.get(docId);
         
-        console.log(`[Document] Inspected new document: ${docId} (${metadata.originalName})`);
+        logger.info(`[Document] Inspected new document: ${docId} (${metadata.originalName})`);
 
         // 2. Process File
         const result = await fileProcessingService.processFile(metadata.path, metadata.originalName);
@@ -70,9 +71,10 @@ router.post('/generate', async (req, res, next) => {
         }
 
         // 3. Filter Content (Business Logic via Utility)
+        logger.info(`[Document] Generate options received:`, JSON.stringify(options, null, 2));
         const finalInput = ContentFilter.apply(extractionData, options || {});
 
-        console.log(`[Document] Generating for ${docId}: Using ${finalInput.images.length} images and ${finalInput.text.length} chars of text.`);
+        logger.info(`[Document] Generating for ${docId}: Using ${finalInput.images.length} images and ${finalInput.text.length} chars of text.`);
 
         // 4. Generate Questions
         const generator = req.app.locals.questionGenerator;

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { logger } = require('./logger');
 
 /**
  * In-Memory Job Queue with SQLite Persistence
@@ -9,8 +10,8 @@ class JobQueue {
         this.jobs = new Map(); // jobId -> job
         this.queue = []; // Array of jobIds waiting to be processed
         this.processing = new Set(); // Set of jobIds currently processing
-        this.maxConcurrent = config.maxConcurrent || 3;
-        this.enabled = config.enabled !== false;
+        this.maxConcurrent = config.maxConcurrent || parseInt(process.env.QUEUE_WORKERS) || 3;
+        this.enabled = config.enabled !== undefined ? config.enabled : (process.env.QUEUE_ENABLED !== 'false');
         this.jobStore = config.jobStore || null; // Required for persistence
         this.jobProcessor = null;
     }
@@ -22,7 +23,7 @@ class JobQueue {
         if (!this.enabled || !this.jobStore) return;
 
         try {
-            console.log('Restoring pending jobs from database...');
+            logger.info('Restoring pending jobs from database...');
             const pendingJobs = await this.jobStore.loadAllJobs({ status: 'pending' });
 
             for (const job of pendingJobs) {
@@ -30,7 +31,7 @@ class JobQueue {
                 this.queue.push(job.id);
             }
 
-            console.log(`Restored ${pendingJobs.length} pending jobs`);
+            logger.info(`Restored ${pendingJobs.length} pending jobs`);
 
             // Also load processing jobs (they were interrupted)
             const processingJobs = await this.jobStore.loadAllJobs({ status: 'processing' });
@@ -48,12 +49,12 @@ class JobQueue {
             }
 
             if (processingJobs.length > 0) {
-                console.log(`Reset ${processingJobs.length} interrupted jobs to pending`);
+                logger.info(`Reset ${processingJobs.length} interrupted jobs to pending`);
             }
 
             this.processQueue();
         } catch (error) {
-            console.error('Failed to restore jobs:', error);
+            logger.error('Failed to restore jobs:', error);
         }
     }
 
@@ -84,7 +85,7 @@ class JobQueue {
         this.jobs.set(jobId, job);
         this.queue.push(jobId);
 
-        console.log(`Job created: ${jobId}`);
+        logger.info(`Job created: ${jobId}`);
 
         // Start processing if not already running
         this.processQueue();
@@ -168,7 +169,7 @@ class JobQueue {
         // Persist to database
         if (this.jobStore) {
             await this.jobStore.saveJob(job).catch(err => {
-                console.warn('Job persistence error:', err.message);
+                logger.warn('Job persistence error:', err.message);
             });
         }
     }
@@ -186,7 +187,7 @@ class JobQueue {
 
             this.processing.add(jobId);
             this.processJob(jobId).catch(error => {
-                console.error(`Job ${jobId} processing error:`, error);
+                logger.error(`Job ${jobId} processing error:`, error);
             });
         }
     }
@@ -201,7 +202,7 @@ class JobQueue {
 
         try {
             await this.updateJob(jobId, 'processing');
-            console.log(`Processing job: ${jobId}`);
+            logger.info(`Processing job: ${jobId}`);
 
             // Job processor should be set externally
             if (!this.jobProcessor) {
@@ -212,19 +213,19 @@ class JobQueue {
                 job.progress = progress;
                 // Don't await every progress update to avoid DB bottleneck
                 if (progress % 10 === 0) {
-                    this.updateJob(jobId, 'processing', { progress }).catch(console.error);
+                    this.updateJob(jobId, 'processing', { progress }).catch(logger.error);
                 }
             });
 
             await this.updateJob(jobId, 'completed', { result, progress: 100 });
-            console.log(`✓ Job completed: ${jobId}`);
+            logger.info(`✓ Job completed: ${jobId}`);
 
         } catch (error) {
             await this.updateJob(jobId, 'failed', {
                 error: error.message,
                 progress: job.progress
             });
-            console.error(`✗ Job failed: ${jobId} - ${error.message}`);
+            logger.error(`✗ Job failed: ${jobId} - ${error.message}`);
         } finally {
             // Process next job in queue
             this.processQueue();
@@ -330,7 +331,7 @@ class JobQueue {
      */
     stop() {
         this.enabled = false;
-        console.log('Job queue stopped');
+        logger.info('Job queue stopped');
     }
 
     /**
@@ -338,7 +339,7 @@ class JobQueue {
      */
     start() {
         this.enabled = true;
-        console.log('Job queue started');
+        logger.info('Job queue started');
         this.processQueue();
     }
 }

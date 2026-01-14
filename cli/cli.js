@@ -5,8 +5,8 @@ const path = require('path');
 const process = require('process');
 // Get the package root directory
 const packageRoot = path.join(__dirname, '..');
-const ProviderManager = require(path.join(packageRoot, 'providers', 'providerManager'));
-const fileProcessingService = require(path.join(packageRoot, 'services', 'FileProcessingService'));
+// Import MultiProviderQuestionGenerator instead of direct ProviderManager
+const { MultiProviderQuestionGenerator } = require(path.join(packageRoot, 'services', 'questionGenerator'));
 const ConfigManager = require(path.join(packageRoot, 'cli', 'config'));
 const { ensureUploadsDirectory, cleanupFiles } = require(path.join(packageRoot, 'utils', 'fileUtils'));
 const cliUI = require(path.join(packageRoot, 'cli', 'ascii'));
@@ -16,13 +16,12 @@ const cliUI = require(path.join(packageRoot, 'cli', 'ascii'));
  */
 class NLPQGCLI {
     constructor() {
-        this.providerManager = null;
-        this.fileProcessingService = null;
+        this.questionGenerator = null;
         this.config = null;
         this.commands = {
             'config': this.configCommand,
             'generate': this.generateCommand,
-            'generate-from-files': this.generateFromFilesCommand,
+            'generate-file': this.generateFromFilesCommand,
             'test': this.testCommand,
             'providers': this.providersCommand,
             'help': this.helpCommand,
@@ -38,20 +37,22 @@ class NLPQGCLI {
         cliUI.printBanner();
         cliUI.showSection('Initializing CLI');
 
-        // Initialize provider manager
-        this.providerManager = new ProviderManager();
-        await this.providerManager.initialize();
-
-        // Initialize file processor
-        this.fileProcessingService = fileProcessingService;
-
-        // Load configuration
+        // Load configuration first
         this.config = this.loadCLIConfig();
+
+        // Initialize question generator
+        this.questionGenerator = new MultiProviderQuestionGenerator(this.config);
+        
+        try {
+            await this.questionGenerator.initialize(this.config);
+            cliUI.showSuccess('CLI initialized successfully');
+        } catch (error) {
+            console.error('❌ Failed to initialize:', error.message);
+            process.exit(1);
+        }
 
         // Ensure uploads directory exists
         await ensureUploadsDirectory(path.join(packageRoot, 'uploads'));
-
-        cliUI.showSuccess('CLI initialized successfully');
     }
 
     /**
@@ -65,7 +66,7 @@ class NLPQGCLI {
             defaultProvider: 'gemini',
             currentProvider: 'gemini',
             providers: {
-                gemini: { model: 'gemini-1.5-flash' },
+                gemini: { model: 'gemini-2.5-flash' },
                 openai: { model: 'gpt-3.5-turbo' },
                 anthropic: { model: 'claude-3-5-sonnet-20241022' }
             }
@@ -100,21 +101,22 @@ class NLPQGCLI {
 
         const handler = this.commands[command];
 
-        if (!handler) {
-            console.error(`❌ Unknown command: ${command}`);
-            console.log('Use "nlp-qg help" to see available commands\n');
-            process.exit(1);
+        if (handler) {
+             try {
+                await handler.call(this, args.slice(1));
+            } catch (error) {
+                console.error('❌ Command failed:', error.message);
+                if (error.stack && process.env.DEBUG) {
+                    console.error(error.stack);
+                }
+                process.exit(1);
+            }
+            return;
         }
 
-        try {
-            await handler.call(this, args.slice(1));
-        } catch (error) {
-            console.error('❌ Command failed:', error.message);
-            if (error.stack && process.env.DEBUG) {
-                console.error(error.stack);
-            }
-            process.exit(1);
-        }
+        console.error(`❌ Unknown command: ${command}`);
+        console.log('Use "nlp-qg help" to see available commands\n');
+        process.exit(1);
     }
 
     /**
@@ -130,37 +132,31 @@ USAGE:
 COMMANDS:
   config                          Open configuration menu
   generate <text>                 Generate questions from text
-  generate-from-files <files...>  Generate questions from files
+  generate-file <files...>        Generate questions from files (PDF, DOCX, etc.)
   test                            Test all provider connections
   providers                       List available providers
-  help, -h, --help               Show this help message
+  help, -h, --help                Show this help message
+
+OPTIONS:
+  --provider=<name>               Specify AI provider (gemini, openai, anthropic)
+  --numQuestions=<n>              Number of questions (default: 10)
+  --difficulty=<level>            Difficulty level (easy, medium, hard, mixed)
+  --no-cache                      Disable caching
+  --parallel                      Force parallel processing for large text
+  --debug                         Enable debug output
 
 EXAMPLES:
   # Generate questions from text
-  nlp-qg "Machine learning is a subset of artificial intelligence"
+  nlp-qg generate "Machine learning is a subset of artificial intelligence"
   
-  # Generate questions from files
-  nlp-qg generate-from-files document.pdf text.txt
+  # Generate from file
+  nlp-qg generate-file ./lecture-notes.pdf
   
   # Open configuration
   nlp-qg config
   
   # Test provider connections
   nlp-qg test
-  
-  # List providers
-  nlp-qg providers
-
-ENVIRONMENT VARIABLES:
-  GEMINI_API_KEY                  Google Gemini API key
-  OPENAI_API_KEY                  OpenAI API key
-  ANTHROPIC_API_KEY               Anthropic API key
-
-CONFIGURATION:
-  Configuration is stored in .nlp-qg/config.json
-  Run "nlp-qg config" to configure the CLI
-
-For more information: https://github.com/your-repo/nlp-question-generator
 `);
     }
 
@@ -183,36 +179,41 @@ For more information: https://github.com/your-repo/nlp-question-generator
             process.exit(1);
         }
 
-        const text = args.join(' ');
-        const options = this.parseOptions(args);
+        // Separate options from text
+        const { options, cleanArgs } = this.parseOptions(args);
+        const text = cleanArgs.join(' ');
+
+        if (!text.trim()) {
+            console.error('❌ Text argument is required');
+             process.exit(1);
+        }
 
         console.log('Generating questions...\n');
 
         try {
-            const result = await this.providerManager.generateQuestions(text, options);
+            const result = await this.questionGenerator.generateQuestions(text, options);
             this.displayResults(result);
         } catch (error) {
             console.error('❌ Generation failed:', error.message);
             process.exit(1);
         }
     }
-
+    
     /**
      * Generate questions from files
      */
     async generateFromFilesCommand(args) {
-        if (args.length === 0) {
-            console.error('❌ File arguments are required');
-            console.log('Usage: nlp-qg generate-from-files <file1> [file2] ...');
+        const { options, cleanArgs: filePaths } = this.parseOptions(args);
+
+        if (filePaths.length === 0) {
+            console.error('❌ No files specified');
+            console.log('Usage: nlp-qg generate-file document.pdf');
             process.exit(1);
         }
 
-        const filePaths = args.filter(arg => !arg.startsWith('--'));
-        const options = this.parseOptions(args);
-
         console.log('Processing files...\n');
 
-        // Validate files
+        // Validate files existence
         const validFiles = [];
         for (const filePath of filePaths) {
             const fullPath = path.resolve(filePath);
@@ -228,44 +229,9 @@ For more information: https://github.com/your-repo/nlp-question-generator
             process.exit(1);
         }
 
-            try {
-            // Map file paths to object structure expected by processFiles
-            const files = validFiles.map(filePath => ({
-                path: filePath,
-                originalname: path.basename(filePath),
-                size: fs.statSync(filePath).size
-            }));
-
-            // Extract text from files
-            const extractionResult = await this.fileProcessingService.processFiles(files);
-            const extractedText = extractionResult.combinedText;
-            const extractedImages = extractionResult.extractedImages || [];
-
-            if (!extractedText.trim() && extractedImages.length === 0) {
-                console.error('❌ No text or images could be extracted from the files');
-                process.exit(1);
-            }
-
-            console.log(`Extracted: ${extractedText.length} extracted characters, ${extractedImages.length} images`);
-            console.log('Generating questions...\n');
-
-            // Construct payload: plain text OR object with text+images
-            const payload = extractedImages.length > 0 
-                ? { text: extractedText || "Analyze these images and generate questions based on them.", images: extractedImages }
-                : extractedText;
-
-            // Switch provider if specified
-            if (options.provider) {
-                if (this.providerManager.hasProvider(options.provider)) {
-                    this.providerManager.switchProvider(options.provider);
-                } else {
-                    console.error(`❌ Provider '${options.provider}' not found or not configured`);
-                    process.exit(1);
-                }
-            }
-
-            // Generate questions
-            const result = await this.providerManager.generateQuestions(payload, options);
+        try {
+            // Use the generator's built-in file handling
+            const result = await this.questionGenerator.generateFromFiles(validFiles, options);
             this.displayResults(result);
 
         } catch (error) {
@@ -284,14 +250,14 @@ For more information: https://github.com/your-repo/nlp-question-generator
 
         if (providerName) {
             // Test specific provider
-            if (!this.providerManager.hasProvider(providerName)) {
+            if (!this.questionGenerator.providerManager.hasProvider(providerName)) {
                 console.error(`❌ Provider '${providerName}' is not available or not configured`);
                 process.exit(1);
             }
 
             console.log(`Testing ${providerName} provider...`);
             try {
-                const provider = this.providerManager.getProvider(providerName);
+                const provider = this.questionGenerator.providerManager.getProvider(providerName);
                 const result = await provider.testConnection();
                 this.displayTestResult(result);
             } catch (error) {
@@ -300,7 +266,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
             }
         } else {
             // Test all providers
-            const results = await this.providerManager.testAllProviders();
+            const results = await this.questionGenerator.testConnections();
             this.displayAllTestResults(results);
         }
     }
@@ -311,8 +277,8 @@ For more information: https://github.com/your-repo/nlp-question-generator
     async providersCommand(args) {
         console.log('Available AI Providers:\n');
 
-        const providers = this.providerManager.listProviders();
-        const status = this.providerManager.getStatus();
+        const providers = this.questionGenerator.listProviders();
+        const status = this.questionGenerator.getStatus();
 
         for (const provider of providers) {
             const config = provider.available ? '✓' : '❌';
@@ -323,8 +289,9 @@ For more information: https://github.com/your-repo/nlp-question-generator
             console.log(`   ${provider.description}`);
             console.log(`   Status: ${configured}`);
             if (provider.available && provider.configured) {
-                const providerInstance = this.providerManager.getProvider(provider.name);
-                const model = providerInstance?.config?.model || 'unknown';
+                 // Accessing model config via providerManager
+                 const providerInstance = this.questionGenerator.providerManager.getProvider(provider.name);
+                 const model = providerInstance?.config?.model || 'unknown';
                 console.log(`   Model: ${model}`);
             }
             console.log();
@@ -332,7 +299,6 @@ For more information: https://github.com/your-repo/nlp-question-generator
 
         // Show current status
         console.log(`Current Provider: ${status.currentProvider}`);
-        console.log(`Default Provider: ${status.defaultProvider}\n`);
     }
 
     /**
@@ -340,6 +306,7 @@ For more information: https://github.com/your-repo/nlp-question-generator
      */
     parseOptions(args) {
         const options = {};
+        const cleanArgs = [];
 
         for (let i = 0; i < args.length; i++) {
             const arg = args[i];
@@ -351,7 +318,6 @@ For more information: https://github.com/your-repo/nlp-question-generator
                     case 'provider':
                         options.provider = value;
                         break;
-                    case 'num-questions':
                     case 'numQuestions':
                         options.numQuestions = parseInt(value) || 10;
                         break;
@@ -361,15 +327,26 @@ For more information: https://github.com/your-repo/nlp-question-generator
                     case 'temperature':
                         options.temperature = parseFloat(value);
                         break;
+                    case 'difficulty':
+                        options.difficulty = value;
+                        break;
                     case 'output':
                     case 'format':
                         options.format = value;
                         break;
+                    case 'no-cache':
+                        options.noCache = true;
+                        break;
+                    case 'parallel':
+                        options.parallel = true;
+                        break;
                 }
+            } else {
+                cleanArgs.push(arg);
             }
         }
 
-        return options;
+        return { options, cleanArgs };
     }
 
     /**
@@ -410,7 +387,15 @@ For more information: https://github.com/your-repo/nlp-question-generator
         if (result.metadata) {
             console.log('─'.repeat(50));
             console.log(`Generated with: ${result.metadata.provider}`);
-            console.log(`Timestamp: ${result.metadata.timestamp}`);
+             if (result.metadata.model) {
+                 console.log(`Model: ${result.metadata.model}`);
+             }
+             if (result.metadata.cacheHit) {
+                 console.log(`Source: Cache (Save: ${result.metadata.timeSaved || '0ms'})`);
+             }
+             if (result.metadata.files) {
+                 console.log(`Files Processed: ${result.metadata.files.length}`);
+             }
         }
     }
 
@@ -419,10 +404,12 @@ For more information: https://github.com/your-repo/nlp-question-generator
      */
     displayTestResult(result) {
         if (result.success) {
-            console.log(`✓${result.provider} test successful`);
+            console.log(`✓ ${result.provider} test successful`);
             console.log(`Message: ${result.message}`);
             console.log(`Model: ${result.model}`);
-            console.log(`Test: ${result.testResult}`);
+            if (result.testResult) {
+                 console.log(`Test: ${result.testResult}`);
+            }
         } else {
             console.log(`❌ ${result.provider} test failed`);
             console.log(`Message: ${result.message}`);

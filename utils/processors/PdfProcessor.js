@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const { PNG } = require('pngjs');
 const pdfParse = require('pdf-parse'); // Fallback
+const { logger } = require('../logger');
 
 /**
  * Convert PDF image object to PNG buffer
@@ -43,7 +44,7 @@ function convertToPng(img) {
             const buffer = PNG.sync.write(png);
             resolve(buffer);
         } catch (e) {
-            console.warn('PNG conversion error:', e.message);
+            logger.warn('PNG conversion error:', e.message);
             resolve(null);
         }
     });
@@ -61,7 +62,7 @@ async function processPdf(filePath, options = {}) {
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
         pdfjsLib = pdfjs;
     } catch (e) {
-        console.warn('Failed to load pdfjs-dist via import, images will be skipped, text via fallback:', e.message);
+        logger.warn('Failed to load pdfjs-dist via import, images will be skipped, text via fallback:', e.message);
         // Fallback for text only
         try {
             const dataBuffer = await fs.readFile(filePath);
@@ -86,7 +87,7 @@ async function processPdf(filePath, options = {}) {
         const startPage = options.pageStart || 1;
         const endPage = options.pageEnd || doc.numPages;
 
-        console.log(`Processing PDF (Pages ${startPage}-${endPage} of ${doc.numPages})...`);
+        logger.info(`Processing PDF (Pages ${startPage}-${endPage} of ${doc.numPages})...`);
 
         let collectedText = [];
         let collectedImages = [];
@@ -191,7 +192,7 @@ async function processPdf(filePath, options = {}) {
             }
         }
 
-        console.log(`PDF Extraction: ${cleanPages.join('').length} chars, ${collectedImages.length} images.`);
+        logger.info(`PDF Extraction: ${cleanPages.join('').length} chars, ${collectedImages.length} images.`);
 
         return {
             text: cleanPages.join('\n'),
@@ -200,7 +201,7 @@ async function processPdf(filePath, options = {}) {
         };
 
     } catch (error) {
-        console.error('Error processing PDF:', error);
+        logger.error('Error processing PDF:', error);
         throw new Error(`Failed to process PDF: ${error.message}`);
     }
 }

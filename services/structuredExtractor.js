@@ -25,7 +25,7 @@ class StructuredExtractor {
      * Extract structured data from a file
      * @param {string} filePath - Absolute path to file
      * @param {string} prompt - Extraction instructions
-     * @param {string} [model='gemini-2.0-flash'] - Model ID
+     * @param {string} [model='gemini-2.5-flash'] - Model ID
      * @returns {Promise<Object>} - The extracted JSON data
      */
     async extract(filePath, prompt, model) {
@@ -34,7 +34,7 @@ class StructuredExtractor {
             if (process.env.DEFAULT_PROVIDER === 'local' && process.env.LOCAL_MODEL) {
                 model = process.env.LOCAL_MODEL;
             } else {
-                model = 'gemini-2.0-flash';
+                model = 'gemini-2.5-flash';
             }
         }
         return new Promise((resolve, reject) => {

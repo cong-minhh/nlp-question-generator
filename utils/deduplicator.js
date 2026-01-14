@@ -1,4 +1,5 @@
 const TextSimilarity = require('./textSimilarity');
+const { logger } = require('./logger');
 
 /**
  * Question Deduplication Engine
@@ -6,21 +7,21 @@ const TextSimilarity = require('./textSimilarity');
  */
 class Deduplicator {
     constructor(config = {}) {
-        this.enabled = config.enabled !== false;
-        this.threshold = config.threshold || 85; // Similarity threshold (0-100)
-        this.compareOptions = config.compareOptions !== false; // Also compare answer options
-        this.keepBest = config.keepBest !== false; // Keep highest quality version
+        this.enabled = config.enabled !== undefined ? config.enabled : (process.env.DEDUP_ENABLED !== 'false');
+        this.threshold = config.threshold || parseInt(process.env.DEDUP_THRESHOLD) || 85; // Similarity threshold (0-100)
+        this.compareOptions = config.compareOptions !== undefined ? config.compareOptions : (process.env.DEDUP_COMPARE_OPTIONS !== 'false'); // Also compare answer options
+        this.keepBest = config.keepBest !== undefined ? config.keepBest : (process.env.DEDUP_KEEP_BEST !== 'false'); // Keep highest quality version
     }
 
     /**
      * Calculate similarity between two questions
      * @param {Object} q1 - First question
      * @param {Object} q2 - Second question
-     * @returns {number} - Similarity score (0-100)
+     * @returns {Promise<number>} - Similarity score (0-100)
      */
-    calculateQuestionSimilarity(q1, q2) {
+    async calculateQuestionSimilarity(q1, q2) {
         // Compare question text
-        const questionSimilarity = TextSimilarity.combinedSimilarity(
+        const questionSimilarity = await TextSimilarity.combinedSimilarity(
             q1.questiontext,
             q2.questiontext
         );
@@ -35,7 +36,7 @@ class Deduplicator {
             const options1 = [q1.optiona, q1.optionb, q1.optionc, q1.optiond].join(' ');
             const options2 = [q2.optiona, q2.optionb, q2.optionc, q2.optiond].join(' ');
             
-            const optionsSimilarity = TextSimilarity.combinedSimilarity(options1, options2);
+            const optionsSimilarity = await TextSimilarity.combinedSimilarity(options1, options2);
             
             // Weighted average: question text is more important
             return questionSimilarity * 0.7 + optionsSimilarity * 0.3;
@@ -47,14 +48,15 @@ class Deduplicator {
     /**
      * Find duplicate questions
      * @param {Array} questions - Questions to check
-     * @returns {Array} - Array of duplicate groups
+     * @returns {Promise<Array>} - Array of duplicate groups
      */
-    findDuplicates(questions) {
+    async findDuplicates(questions) {
         const duplicateGroups = [];
         const processed = new Set();
 
-        questions.forEach((q1, i) => {
-            if (processed.has(i)) return;
+        for (let i = 0; i < questions.length; i++) {
+            const q1 = questions[i];
+            if (processed.has(i)) continue;
 
             const group = {
                 indices: [i],
@@ -62,9 +64,10 @@ class Deduplicator {
                 similarities: []
             };
 
-            questions.forEach((q2, j) => {
+            for (let j = 0; j < questions.length; j++) {
+                const q2 = questions[j];
                 if (i !== j && !processed.has(j)) {
-                    const similarity = this.calculateQuestionSimilarity(q1, q2);
+                    const similarity = await this.calculateQuestionSimilarity(q1, q2);
                     
                     if (similarity >= this.threshold) {
                         group.indices.push(j);
@@ -76,7 +79,7 @@ class Deduplicator {
                         processed.add(j);
                     }
                 }
-            });
+            }
 
             // Only add if duplicates were found
             if (group.indices.length > 1) {
@@ -84,7 +87,7 @@ class Deduplicator {
             }
 
             processed.add(i);
-        });
+        }
 
         return duplicateGroups;
     }
@@ -184,9 +187,9 @@ class Deduplicator {
      * Remove duplicates from questions
      * @param {Array} questions - Questions to deduplicate
      * @param {Array} scores - Quality scores (optional)
-     * @returns {Object} - Deduplicated results
+     * @returns {Promise<Object>} - Deduplicated results
      */
-    deduplicate(questions, scores = null) {
+    async deduplicate(questions, scores = null) {
         if (!this.enabled || questions.length <= 1) {
             return {
                 questions,
@@ -197,12 +200,12 @@ class Deduplicator {
             };
         }
 
-        console.log(`Checking ${questions.length} questions for duplicates (threshold: ${this.threshold}%)...`);
+        logger.info(`Checking ${questions.length} questions for duplicates (threshold: ${this.threshold}%)...`);
 
-        const duplicateGroups = this.findDuplicates(questions);
+        const duplicateGroups = await this.findDuplicates(questions);
 
         if (duplicateGroups.length === 0) {
-            console.log('✓ No duplicates found');
+            logger.info('✓ No duplicates found');
             return {
                 questions,
                 duplicatesFound: 0,
@@ -212,7 +215,7 @@ class Deduplicator {
             };
         }
 
-        console.log(`⚠ Found ${duplicateGroups.length} duplicate groups`);
+        logger.info(`⚠ Found ${duplicateGroups.length} duplicate groups`);
 
         // Build set of indices to keep
         const indicesToKeep = new Set();
@@ -243,7 +246,7 @@ class Deduplicator {
                 }
             });
 
-            console.log(`Group ${groupIndex + 1}: Kept question ${bestGlobalIndex}, removed ${group.indices.length - 1} duplicates`);
+            logger.info(`Group ${groupIndex + 1}: Kept question ${bestGlobalIndex}, removed ${group.indices.length - 1} duplicates`);
         });
 
         // Filter questions
@@ -251,7 +254,7 @@ class Deduplicator {
         const deduplicatedScores = scores ? scores.filter((_, index) => indicesToKeep.has(index)) : null;
 
         const duplicatesRemoved = questions.length - deduplicatedQuestions.length;
-        console.log(`✓ Removed ${duplicatesRemoved} duplicates, kept ${deduplicatedQuestions.length} unique questions`);
+        logger.info(`✓ Removed ${duplicatesRemoved} duplicates, kept ${deduplicatedQuestions.length} unique questions`);
 
         return {
             questions: deduplicatedQuestions,
@@ -272,10 +275,10 @@ class Deduplicator {
      * Check if two specific questions are duplicates
      * @param {Object} q1 - First question
      * @param {Object} q2 - Second question
-     * @returns {Object} - Duplicate check result
+     * @returns {Promise<Object>} - Duplicate check result
      */
-    areDuplicates(q1, q2) {
-        const similarity = this.calculateQuestionSimilarity(q1, q2);
+    async areDuplicates(q1, q2) {
+        const similarity = await this.calculateQuestionSimilarity(q1, q2);
         
         return {
             isDuplicate: similarity >= this.threshold,

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const path = require('path');
+const { logger } = require('../logger');
 
 /**
  * Extract text and images from a PPTX file, with support for slide ranges.
@@ -32,7 +33,7 @@ async function processPptx(filePath, options = {}) {
         const startSlide = options.pageStart || 1;
         const endSlide = options.pageEnd || totalSlides;
 
-        console.log(`PPTX Extraction: Found ${totalSlides} slides. Requesting ${startSlide}-${endSlide}.`);
+        logger.info(`PPTX Extraction: Found ${totalSlides} slides. Requesting ${startSlide}-${endSlide}.`);
 
         let extractedText = '';
         const extractedImages = [];
@@ -59,6 +60,10 @@ async function processPptx(filePath, options = {}) {
             let slideText = '';
             
             if (textMatches) {
+                // Heuristic: The first large text block is often the title.
+                // We'll store it but for now just concat.
+                // Or maybe we can detect "notes" or "title" based on position (if we parsed Full XML).
+                // Without full XML, we just rely on order.
                 slideText = textMatches
                     .map(tag => tag.replace(/<\/?a:t>/g, ''))
                     .join(' ')
@@ -69,7 +74,11 @@ async function processPptx(filePath, options = {}) {
                 slideText = slideContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
             }
 
-            extractedText += `--- Slide ${slideNum} ---\n${slideText}\n\n`;
+            // --- Detect Notes (rudimentary) ---
+            // Notes are usually in a separate relationship/file 'notesSlides', but we can check if there's a marker.
+            // For now, let's just format the slide more cleanly.
+            const extractedItem = `--- Slide ${slideNum} ---\n${slideText}\n\n`;
+            extractedText += extractedItem;
 
             // --- Extract Images ---
             const relsEntryName = `ppt/slides/_rels/${path.basename(slideEntry.entryName)}.rels`;
@@ -128,7 +137,7 @@ async function processPptx(filePath, options = {}) {
                             source: `${filename} - Slide ${slideNum} (${path.basename(normalizedTarget)})`
                         });
                     } else {
-                        console.warn(`Warning: Image target ${normalizedTarget} not found in zip.`);
+                        logger.warn(`Warning: Image target ${normalizedTarget} not found in zip.`);
                     }
                 }
             }
@@ -143,8 +152,8 @@ async function processPptx(filePath, options = {}) {
             extractedImages.push(...slideImages);
         }
 
-        console.log(`PPTX Extraction Complete: ${extractedText.length} chars, ${extractedImages.length} images.`);
-        console.log(`Optimization: Skipped ${duplicateCount} duplicates and ${smallCount} tiny images.`);
+        logger.info(`PPTX Extraction Complete: ${extractedText.length} chars, ${extractedImages.length} images.`);
+        logger.info(`Optimization: Skipped ${duplicateCount} duplicates and ${smallCount} tiny images.`);
         return {
             text: extractedText,
             images: extractedImages,
@@ -152,7 +161,7 @@ async function processPptx(filePath, options = {}) {
         };
 
     } catch (error) {
-        console.error('Error extracting from PPTX:', error);
+        logger.error('Error extracting from PPTX:', error);
         throw error;
     }
 }

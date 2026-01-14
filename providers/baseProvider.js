@@ -512,7 +512,7 @@ Ensure all questions target this cognitive level specifically.`;
             analysis: analysis || 'No analysis provided',
             metadata: {
                 generated_at: new Date().toISOString(),
-                num_questions: standardizedQuestions.length,
+                numQuestions: standardizedQuestions.length,
                 expected_questions: numQuestions,
                 source: this.name
             }
@@ -629,7 +629,7 @@ Ensure all questions target this cognitive level specifically.`;
             "difficulty": "${(promptDifficulty === 'mixed' || promptDifficulty.startsWith('VARIES')) ? 'easy|medium|hard' : promptDifficulty}",
             "cognitive_level": "remember|understand|apply|analyze|evaluate|create",
             "rationale": "Detailed explanation of why the correct answer is right and why each distractor is wrong"
-            }
+            }   
         ]
         }
 

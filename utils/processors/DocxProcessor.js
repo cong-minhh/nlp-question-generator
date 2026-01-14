@@ -1,6 +1,7 @@
 const mammoth = require('mammoth');
 const AdmZip = require('adm-zip');
 const path = require('path');
+const { logger } = require('../logger');
 
 /**
  * Extract text and images from a DOCX file
@@ -10,7 +11,7 @@ const path = require('path');
 async function processDocx(filePath) {
     try {
         const filename = path.basename(filePath);
-        console.log(`Processing DOCX: ${filename}`);
+        logger.info(`Processing DOCX: ${filename}`);
 
         // 1. Extract Text using Mammoth (best for preserving structure/readability)
         const textResult = await mammoth.extractRawText({ path: filePath });
@@ -49,7 +50,7 @@ async function processDocx(filePath) {
             }
         }
 
-        console.log(`DOCX Extraction: ${text.length} chars, ${images.length} images.`);
+        logger.info(`DOCX Extraction: ${text.length} chars, ${images.length} images.`);
         
         return {
             text,
@@ -62,7 +63,7 @@ async function processDocx(filePath) {
         };
 
     } catch (error) {
-        console.error('Error processing DOCX:', error);
+        logger.error('Error processing DOCX:', error);
         throw new Error(`Failed to process DOCX ${path.basename(filePath)}: ${error.message}`);
     }
 }

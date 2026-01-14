@@ -2,6 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const HashGenerator = require('./hash');
+const { logger } = require('./logger');
 
 /**
  * Cache Manager using SQLite
@@ -9,9 +10,9 @@ const HashGenerator = require('./hash');
  */
 class CacheManager {
     constructor(config = {}) {
-        this.enabled = config.enabled !== false;
-        this.ttlDays = config.ttlDays || 30;
-        this.maxEntries = config.maxEntries || 1000;
+        this.enabled = config.enabled !== undefined ? config.enabled : (process.env.CACHE_ENABLED !== 'false');
+        this.ttlDays = config.ttlDays || parseInt(process.env.CACHE_TTL_DAYS) || 30;
+        this.maxEntries = config.maxEntries || parseInt(process.env.CACHE_MAX_ENTRIES) || 1000;
         this.dbPath = config.dbPath || path.join(process.cwd(), 'data', 'nlp-generator.db');
         this.db = null;
     }
@@ -21,7 +22,7 @@ class CacheManager {
      */
     async initialize() {
         if (!this.enabled) {
-            console.log('Cache is disabled');
+            logger.info('Cache is disabled');
             return;
         }
 
@@ -40,7 +41,7 @@ class CacheManager {
 
                 this.createTables()
                     .then(() => {
-                        console.log('✓ Cache initialized');
+                        logger.info('✓ Cache initialized');
                         resolve();
                     })
                     .catch(reject);
@@ -84,7 +85,7 @@ class CacheManager {
                 createIndexes.forEach(indexSQL => {
                     this.db.run(indexSQL, (err) => {
                         if (err) {
-                            console.warn(`Index creation warning: ${err.message}`);
+                            logger.warn(`Index creation warning: ${err.message}`);
                         }
                         completed++;
                         if (completed === createIndexes.length) {
@@ -121,7 +122,7 @@ class CacheManager {
 
             this.db.get(query, [cacheKey, now, ttlMs], (err, row) => {
                 if (err) {
-                    console.error('Cache read error:', err.message);
+                    logger.error('Cache read error:', err.message);
                     resolve(null);
                     return;
                 }
@@ -132,7 +133,7 @@ class CacheManager {
                 }
 
                 // Update access stats
-                this.updateAccessStats(cacheKey).catch(console.error);
+                this.updateAccessStats(cacheKey).catch(logger.error);
 
                 try {
                     const result = {
@@ -144,7 +145,7 @@ class CacheManager {
                     };
                     resolve(result);
                 } catch (parseError) {
-                    console.error('Cache parse error:', parseError.message);
+                    logger.error('Cache parse error:', parseError.message);
                     resolve(null);
                 }
             });
@@ -192,13 +193,13 @@ class CacheManager {
 
             this.db.run(query, params, (err) => {
                 if (err) {
-                    console.error('Cache write error:', err.message);
+                    logger.error('Cache write error:', err.message);
                     resolve(); // Don't fail on cache errors
                     return;
                 }
 
                 // Cleanup old entries if needed
-                this.cleanup().catch(console.error);
+                this.cleanup().catch(logger.error);
                 resolve();
             });
         });
@@ -251,7 +252,7 @@ class CacheManager {
 
                 const deleteCount = row.count - this.maxEntries;
                 this.db.run(deleteQuery, [deleteCount], () => {
-                    console.log(`Cleaned up ${deleteCount} old cache entries`);
+                    logger.info(`Cleaned up ${deleteCount} old cache entries`);
                     resolve();
                 });
             });
@@ -269,7 +270,7 @@ class CacheManager {
                 if (err) {
                     reject(new Error(`Failed to clear cache: ${err.message}`));
                 } else {
-                    console.log('✓ Cache cleared');
+                    logger.info('✓ Cache cleared');
                     resolve();
                 }
             });
@@ -324,7 +325,7 @@ class CacheManager {
 
         return new Promise((resolve) => {
             this.db.close(() => {
-                console.log('✓ Cache closed');
+                logger.info('✓ Cache closed');
                 resolve();
             });
         });

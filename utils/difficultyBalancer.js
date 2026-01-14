@@ -2,16 +2,18 @@
  * Difficulty Distribution Balancer
  * Ensures proper difficulty distribution in question sets
  */
+const { logger } = require('./logger');
+
 class DifficultyBalancer {
     constructor(config = {}) {
-        this.enabled = config.enabled !== false;
+        this.enabled = config.enabled !== undefined ? config.enabled : (process.env.DIFFICULTY_BALANCE_ENABLED !== 'false');
         this.targetDistribution = config.targetDistribution || {
             easy: 0.30,    // 30%
             medium: 0.40,  // 40%
             hard: 0.30     // 30%
         };
-        this.tolerance = config.tolerance || 0.10; // 10% tolerance
-        this.maxRetries = config.maxRetries || 2;
+        this.tolerance = config.tolerance || parseFloat(process.env.DIFFICULTY_BALANCE_TOLERANCE) || 0.10; // 10% tolerance
+        this.maxRetries = config.maxRetries || parseInt(process.env.DIFFICULTY_BALANCE_MAX_RETRIES) || 2;
     }
 
     /**
@@ -151,16 +153,16 @@ class DifficultyBalancer {
             };
         }
 
-        console.log(`Balancing difficulty distribution (attempt ${attempt}/${this.maxRetries + 1})...`);
+        logger.info(`Balancing difficulty distribution (attempt ${attempt}/${this.maxRetries + 1})...`);
 
         const distribution = this.calculateDistribution(questions);
         const balanceCheck = this.isBalanced(distribution);
 
-        console.log(`Current: Easy ${balanceCheck.current.easy}, Medium ${balanceCheck.current.medium}, Hard ${balanceCheck.current.hard}`);
-        console.log(`Target:  Easy ${balanceCheck.target.easy}, Medium ${balanceCheck.target.medium}, Hard ${balanceCheck.target.hard}`);
+        logger.info(`Current: Easy ${balanceCheck.current.easy}, Medium ${balanceCheck.current.medium}, Hard ${balanceCheck.current.hard}`);
+        logger.info(`Target:  Easy ${balanceCheck.target.easy}, Medium ${balanceCheck.target.medium}, Hard ${balanceCheck.target.hard}`);
 
         if (balanceCheck.isBalanced) {
-            console.log('✓ Distribution is balanced');
+            logger.info('✓ Distribution is balanced');
             return {
                 questions,
                 balanced: true,
@@ -170,11 +172,11 @@ class DifficultyBalancer {
             };
         }
 
-        console.log(`⚠ Distribution imbalanced (max deviation: ${(parseFloat(balanceCheck.maxDeviation) * 100).toFixed(1)}%)`);
+        logger.info(`⚠ Distribution imbalanced (max deviation: ${(parseFloat(balanceCheck.maxDeviation) * 100).toFixed(1)}%)`);
 
         // If we can't regenerate or reached max retries, return what we have
         if (!regenerateFn || attempt > this.maxRetries) {
-            console.log('⚠ Cannot rebalance - returning current questions');
+            logger.info('⚠ Cannot rebalance - returning current questions');
             return {
                 questions,
                 balanced: false,
@@ -199,7 +201,7 @@ class DifficultyBalancer {
             return await this.balanceByRemoval(questions, distribution);
         }
 
-        console.log(`Regenerating: ${toRegenerate.map(t => `${t.count} ${t.difficulty}`).join(', ')}`);
+        logger.info(`Regenerating: ${toRegenerate.map(t => `${t.count} ${t.difficulty}`).join(', ')}`);
 
         try {
             // Regenerate needed questions
@@ -217,7 +219,7 @@ class DifficultyBalancer {
             return await this.balance(combined, regenerateFn, attempt + 1);
 
         } catch (error) {
-            console.warn('Rebalancing failed:', error.message);
+            logger.warn('Rebalancing failed:', error.message);
             return {
                 questions,
                 balanced: false,
@@ -236,7 +238,7 @@ class DifficultyBalancer {
      * @returns {Object} - Balanced result
      */
     async balanceByRemoval(questions, distribution) {
-        console.log('Balancing by removing excess questions...');
+        logger.info('Balancing by removing excess questions...');
 
         const target = this.calculateNeeded(questions.length);
         const toKeep = {
@@ -263,7 +265,7 @@ class DifficultyBalancer {
         const newDistribution = this.calculateDistribution(balanced);
         const balanceCheck = this.isBalanced(newDistribution);
 
-        console.log(`✓ Removed ${questions.length - balanced.length} excess questions`);
+        logger.info(`✓ Removed ${questions.length - balanced.length} excess questions`);
 
         return {
             questions: balanced,

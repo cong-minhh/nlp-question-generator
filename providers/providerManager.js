@@ -9,6 +9,7 @@ const KimiProvider = require('./kimiProvider');
 const KimiCnProvider = require('./kimiCnProvider');
 const LocalProvider = require('./localProvider');
 const ProviderRouter = require('../utils/providerRouter');
+const { logger } = require('../utils/logger');
 
 /**
  * AI Provider Manager - Handles multiple AI providers with smart routing
@@ -318,9 +319,9 @@ class ProviderManager {
             provider: this.currentProvider
         };
 
-        console.log(`Generating questions using ${this.currentProvider} provider...`);
+        logger.info(`Generating questions using ${this.currentProvider} provider...`);
         const result = await provider.generateQuestions(text, enrichedOptions);
-
+        logger.info(`Questions generated successfully!`);
         return {
             ...result,
             metadata: {

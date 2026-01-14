@@ -1,0 +1,563 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "NLP Question Generator API",
+    "version": "2.0.0",
+    "description": "Multi-provider AI-powered API for generating multiple-choice quiz questions from text or files",
+    "contact": { "name": "API Support" }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    { "name": "Generation", "description": "Question generation endpoints" },
+    { "name": "Providers", "description": "AI provider management" },
+    { "name": "System", "description": "System health and information" },
+    {
+      "name": "Documents",
+      "description": "Stateful document processing for granular content selection"
+    },
+    { "name": "Jobs", "description": "Async job queue operations" },
+    { "name": "Debug", "description": "Debugging and verification endpoints" }
+  ],
+  "components": {
+    "schemas": {
+      "Question": {
+        "type": "object",
+        "properties": {
+          "questiontext": {
+            "type": "string",
+            "description": "The question text"
+          },
+          "optiona": { "type": "string", "description": "Option A" },
+          "optionb": { "type": "string", "description": "Option B" },
+          "optionc": { "type": "string", "description": "Option C" },
+          "optiond": { "type": "string", "description": "Option D" },
+          "correctanswer": {
+            "type": "string",
+            "enum": ["A", "B", "C", "D"],
+            "description": "The correct answer"
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": ["easy", "medium", "hard"],
+            "description": "Question difficulty level"
+          }
+        }
+      },
+      "QuestionResponse": {
+        "type": "object",
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Question" }
+          },
+          "provider": { "type": "string", "description": "AI provider used" },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "generated_at": { "type": "string", "format": "date-time" },
+              "numQuestions": { "type": "integer" },
+              "source": { "type": "string" },
+              "model": { "type": "string" }
+            }
+          }
+        }
+      },
+      "FileQuestionResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/QuestionResponse" },
+          {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "filesProcessed": { "type": "integer" },
+                  "filesWithText": { "type": "integer" },
+                  "totalTextLength": { "type": "integer" },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "size": { "type": "integer" },
+                        "textLength": { "type": "integer" },
+                        "status": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ProvidersResponse": {
+        "type": "object",
+        "properties": {
+          "currentProvider": { "type": "string" },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "description": { "type": "string" },
+                "configured": { "type": "boolean" },
+                "available": { "type": "boolean" },
+                "isCurrent": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "DocumentInspectionResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "docId": {
+            "type": "string",
+            "description": "Unique identifier for the uploaded document state"
+          },
+          "filename": { "type": "string" },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "page": { "type": "integer" },
+                "text": { "type": "string" },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "source": { "type": "string" },
+                      "mediaType": { "type": "string" },
+                      "data": {
+                        "type": "string",
+                        "description": "Base64 encoded image data"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "JobStatus": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "processing", "completed", "failed"]
+          },
+          "progress": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time" },
+          "error": { "type": "string" }
+        }
+      },
+      "JobList": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "jobs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/JobStatus" }
+          },
+          "stats": { "type": "object" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/generate": {
+      "post": {
+        "summary": "Generate questions from text",
+        "description": "Generate multiple-choice quiz questions from provided text using the current AI provider",
+        "tags": ["Generation"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "The text to generate questions from",
+                    "minLength": 50,
+                    "maxLength": 50000,
+                    "example": "Python is a high-level programming language known for its simplicity and readability."
+                  },
+                  "numQuestions": {
+                    "type": "integer",
+                    "description": "Number of questions to generate",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 10,
+                    "example": 5
+                  },
+                  "numQuestions": {
+                    "type": "integer",
+                    "description": "Alternative parameter name (underscore format)",
+                    "minimum": 1,
+                    "maximum": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Questions generated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/QuestionResponse" }
+              }
+            }
+          },
+          "400": { "description": "Bad request - invalid input" },
+          "500": { "description": "Server error - generation failed" }
+        }
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "summary": "List all AI providers",
+        "description": "Get a list of all available AI providers and their configuration status",
+        "tags": ["Providers"],
+        "responses": {
+          "200": {
+            "description": "List of providers",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProvidersResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/current-provider": {
+      "get": {
+        "summary": "Get current provider",
+        "description": "Get information about the currently active AI provider",
+        "tags": ["Providers"],
+        "responses": {
+          "200": { "description": "Current provider information" }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Check if the service is running and healthy",
+        "tags": ["System"],
+        "responses": { "200": { "description": "Service is healthy" } }
+      }
+    },
+    "/api/parallel/config": {
+      "get": {
+        "summary": "Get parallel processing config",
+        "description": "Get current configuration for parallel question generation",
+        "tags": ["System"],
+        "responses": {
+          "200": { "description": "Configuration retrieved successfully" }
+        }
+      }
+    },
+    "/api/parallel/estimate": {
+      "get": {
+        "summary": "Estimate parallel savings",
+        "description": "Estimate time savings for parallel processing based on question count",
+        "tags": ["System"],
+        "parameters": [
+          {
+            "name": "numQuestions",
+            "in": "query",
+            "schema": { "type": "integer", "default": 30 },
+            "description": "Number of questions to estimate for"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Estimate retrieved successfully" }
+        }
+      }
+    },
+    "/api/debug/process": {
+      "post": {
+        "summary": "Debug file processing",
+        "description": "Process a file and return structured content for debugging",
+        "tags": ["Debug"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "File processed successfully" } }
+      }
+    },
+    "/api/debug/verify-ai": {
+      "post": {
+        "summary": "Verify AI perception",
+        "description": "Verify if AI can see provided text and images",
+        "tags": ["Debug"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string" },
+                        "mediaType": { "type": "string" },
+                        "data": { "type": "string" }
+                      }
+                    }
+                  },
+                  "provider": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Verification complete" } }
+      }
+    },
+    "/api/documents/inspect": {
+      "post": {
+        "summary": "Inspect document content",
+        "description": "Upload a document to extract structure (slides, images) for granular selection. Returns a docId for subsequent generation.",
+        "tags": ["Documents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file to inspect (PDF, PPTX, DOCX)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Document inspected successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentInspectionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/generate": {
+      "post": {
+        "summary": "Generate questions from selected content",
+        "description": "Generate questions using a previously inspected document ID and a content filter.",
+        "tags": ["Documents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["docId"],
+                "properties": {
+                  "docId": {
+                    "type": "string",
+                    "description": "The ID returned from /inspect",
+                    "example": "123e4567-e89b-12d3-a456-426614174000"
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "includeSlides": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "List of slide/page numbers to include (1-based)"
+                      },
+                      "includeImages": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "List of image source identifiers to include"
+                      },
+                      "numQuestions": { "type": "integer", "default": 10 },
+                      "difficulty": {
+                        "type": "string",
+                        "enum": ["easy", "medium", "hard", "mixed"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Questions generated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/QuestionResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "post": {
+        "summary": "Submit a new job",
+        "description": "Submit a background job for question generation",
+        "tags": ["Jobs"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text": { "type": "string" },
+                  "numQuestions": { "type": "integer", "default": 10 },
+                  "difficulty": { "type": "string", "default": "mixed" },
+                  "bloomLevel": { "type": "string", "default": "apply" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "202": { "description": "Job accepted" } }
+      },
+      "get": {
+        "summary": "List all jobs",
+        "description": "Get a list of all jobs, optionally filtered by status",
+        "tags": ["Jobs"],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "processing", "completed", "failed"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of jobs",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JobList" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}": {
+      "get": {
+        "summary": "Get job status",
+        "tags": ["Jobs"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "job": { "$ref": "#/components/schemas/JobStatus" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Job not found" }
+        }
+      },
+      "delete": {
+        "summary": "Cancel a job",
+        "tags": ["Jobs"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Job cancelled" } }
+      }
+    },
+    "/api/jobs/{id}/result": {
+      "get": {
+        "summary": "Get job result",
+        "tags": ["Jobs"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/QuestionResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

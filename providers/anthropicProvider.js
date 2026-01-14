@@ -206,7 +206,7 @@ class AnthropicProvider extends BaseAIProvider {
                 // Trim to requested number of questions (AI sometimes generates more)
                 if (standardized.questions.length > numQuestions) {
                     standardized.questions = standardized.questions.slice(0, numQuestions);
-                    standardized.metadata.num_questions = numQuestions;
+                    standardized.metadata.numQuestions = numQuestions;
                 }
                 
                 // Add model info to metadata

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { MultiProviderQuestionGenerator } = require('./services/questionGenerator');
-const ProviderManager = require('./providers/providerManager');
+const { MultiProviderQuestionGenerator } = require('../services/questionGenerator');
+const ProviderManager = require('../providers/providerManager');
 
 /**
  * Test script to verify that:

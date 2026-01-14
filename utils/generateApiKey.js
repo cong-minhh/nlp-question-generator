@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const crypto = require('crypto');
+const { logger } = require('./logger');
 
 /**
  * Generate a secure API key
@@ -16,11 +17,11 @@ function generateApiKey() {
 // If run directly, generate and print an API key
 if (require.main === module) {
     const apiKey = generateApiKey();
-    console.log('\nGenerated API Key:\n');
-    console.log(apiKey);
-    console.log('\nAdd this to your .env file:');
-    console.log(`SERVER_API_KEY=${apiKey}`);
-    console.log('\nKeep this key secret and secure!\n');
+    logger.info('\nGenerated API Key:\n');
+    logger.info(apiKey);
+    logger.info('\nAdd this to your .env file:');
+    logger.info(`SERVER_API_KEY=${apiKey}`);
+    logger.info('\nKeep this key secret and secure!\n');
 }
 
 module.exports = { generateApiKey };

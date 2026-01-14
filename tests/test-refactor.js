@@ -1,6 +1,6 @@
-const { processPdf } = require('./utils/processors/PdfProcessor');
-const { processDocx } = require('./utils/processors/DocxProcessor');
-const { processPptx } = require('./utils/processors/PptxProcessor');
+const { processPdf } = require('../utils/processors/PdfProcessor');
+const { processDocx } = require('../utils/processors/DocxProcessor');
+const { processPptx } = require('../utils/processors/PptxProcessor');
 const { processFiles } = require('./services/textExtractor');
 
 console.log('Testing module imports...');
