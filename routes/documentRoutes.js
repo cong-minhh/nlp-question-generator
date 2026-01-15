@@ -71,7 +71,7 @@ router.post('/generate', async (req, res, next) => {
         }
 
         // 3. Filter Content (Business Logic via Utility)
-        logger.info(`[Document] Generate options received:`, JSON.stringify(options, null, 2));
+        // logger.info(`[Document] Generate options received:`, JSON.stringify(options, null, 2));
         const finalInput = ContentFilter.apply(extractionData, options || {});
 
         logger.info(`[Document] Generating for ${docId}: Using ${finalInput.images.length} images and ${finalInput.text.length} chars of text.`);

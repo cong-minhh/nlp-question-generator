@@ -1,283 +1,341 @@
-const BaseAIProvider = require('./baseProvider');
+const BaseAIProvider = require("./baseProvider");
+const { logger } = require("../utils/logger");
 
 /**
  * Kimi AI China (Moonshot CN) Provider Implementation
  * API: https://platform.moonshot.cn/
  */
 class KimiCnProvider extends BaseAIProvider {
-    constructor(config = {}) {
-        super(config);
-        this.name = 'kimicn';
-        this.description = 'Kimi AI China (Moonshot CN) Provider';
-        // Models in order of preference (fallback order)
-        this.supportedModels = [
-            'moonshot-v1-8k',      // 8K context window
-            'moonshot-v1-32k',     // 32K context window
-            'moonshot-v1-128k'     // 128K context window
-        ];
-        this.baseURL = config.baseURL || 'https://api.moonshot.cn/v1';
-        this.maxRetries = 3;
-        this.baseDelay = 2000;
-        this.currentModelIndex = 0;
+  constructor(config = {}) {
+    super(config);
+    this.name = "kimicn";
+    this.description = "Kimi AI China (Moonshot CN) Provider";
+    // Models in order of preference (fallback order)
+    this.supportedModels = [
+      "moonshot-v1-8k", // 8K context window
+      "moonshot-v1-32k", // 32K context window
+      "moonshot-v1-128k", // 128K context window
+    ];
+    this.baseURL = config.baseURL || "https://api.moonshot.cn/v1";
+    this.maxRetries = 3;
+    this.baseDelay = 2000;
+    this.currentModelIndex = 0;
+  }
+
+  /**
+   * Validate Kimi configuration
+   */
+  validateConfig() {
+    if (!this.config.apiKey) {
+      throw new Error(
+        "Kimi CN API key is required. Set KIMICN_API_KEY environment variable or configure in settings."
+      );
     }
-
-    /**
-     * Validate Kimi configuration
-     */
-    validateConfig() {
-        if (!this.config.apiKey) {
-            throw new Error('Kimi CN API key is required. Set KIMICN_API_KEY environment variable or configure in settings.');
-        }
-        if (this.config.model && !this.supportedModels.includes(this.config.model)) {
-            throw new Error(`Unsupported Kimi CN model: ${this.config.model}. Supported models: ${this.supportedModels.join(', ')}`);
-        }
+    if (
+      this.config.model &&
+      !this.supportedModels.includes(this.config.model)
+    ) {
+      throw new Error(
+        `Unsupported Kimi CN model: ${
+          this.config.model
+        }. Supported models: ${this.supportedModels.join(", ")}`
+      );
     }
+  }
 
-    /**
-     * Initialize Kimi CN client with automatic model fallback
-     */
-    async initialize(config = {}) {
-        await super.initialize(config);
-        this.client = this.createClient();
-        
-        // Set current model
-        const preferredModel = this.config.model || this.supportedModels[0];
-        this.currentModel = preferredModel;
-        console.log(`✓ Initialized Kimi CN with model: ${this.currentModel}`);
-    }
+  /**
+   * Initialize Kimi CN client with automatic model fallback
+   */
+  async initialize(config = {}) {
+    await super.initialize(config);
+    this.client = this.createClient();
 
-    /**
-     * Create Kimi client using fetch
-     */
-    createClient() {
-        return {
-            chat: {
-                completions: {
-                    create: async (options) => {
-                        const response = await fetch(`${this.baseURL}/chat/completions`, {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${this.config.apiKey}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(options)
-                        });
+    // Set current model
+    const preferredModel = this.config.model || this.supportedModels[0];
+    this.currentModel = preferredModel;
+    logger.info(`Initialized Kimi CN`, { model: this.currentModel });
+  }
 
-                        if (!response.ok) {
-                            const errorData = await response.json().catch(() => ({}));
-                            throw new Error(`Kimi API error: ${response.status} ${response.statusText}. ${errorData.message || errorData.error?.message || ''}`);
-                        }
+  /**
+   * Create Kimi client using fetch
+   */
+  createClient() {
+    return {
+      chat: {
+        completions: {
+          create: async (options) => {
+            const response = await fetch(`${this.baseURL}/chat/completions`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${this.config.apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(options),
+            });
 
-                        return await response.json();
-                    }
-                }
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(
+                `Kimi API error: ${response.status} ${response.statusText}. ${
+                  errorData.message || errorData.error?.message || ""
+                }`
+              );
             }
-        };
+
+            return await response.json();
+          },
+        },
+      },
+    };
+  }
+
+  /**
+   * Try next available model in fallback list
+   */
+  async tryFallbackModel() {
+    this.currentModelIndex++;
+
+    if (this.currentModelIndex >= this.supportedModels.length) {
+      logger.error("All Kimi CN fallback models exhausted");
+      return false;
     }
 
-    /**
-     * Try next available model in fallback list
-     */
-    async tryFallbackModel() {
-        this.currentModelIndex++;
-        
-        if (this.currentModelIndex >= this.supportedModels.length) {
-            console.error('⚠ All Kimi CN fallback models exhausted');
-            return false;
+    const fallbackModel = this.supportedModels[this.currentModelIndex];
+    logger.info(`Falling back to Kimi CN model`, { model: fallbackModel });
+
+    this.currentModel = fallbackModel;
+    return true;
+  }
+
+  /**
+   * Check if Kimi provider is configured
+   */
+  isConfigured() {
+    return !!this.config.apiKey;
+  }
+
+  /**
+   * Parse Kimi response to extract generated text
+   */
+  parseResponse(response) {
+    if (!response.choices || !response.choices.length) {
+      throw new Error("No choices in Kimi response");
+    }
+
+    const message = response.choices[0].message;
+    if (!message || !message.content) {
+      throw new Error("No content in Kimi response");
+    }
+
+    return message.content;
+  }
+
+  /**
+   * Generate questions using Kimi AI with automatic model fallback
+   */
+  async generateQuestions(text, options = {}) {
+    const numQuestions = options.numQuestions || 10;
+
+    // Ensure difficulty is always set to 'mixed' by default
+    const promptOptions = {
+      numQuestions,
+      bloomLevel: options.bloomLevel || "apply",
+      difficulty: options.difficulty || "mixed",
+    };
+
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        const prompt = this.buildPrompt(text, promptOptions);
+
+        // Calculate max_tokens based on number of questions
+        // Each question needs ~350-400 tokens (question + options + rationale)
+        // Add buffer for analysis and JSON structure
+        // const maxTokens = Math.max(2000, numQuestions * 400 + 500);
+
+        const response = await this.client.chat.completions.create({
+          model: this.currentModel,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert educator creating multiple choice quiz questions. Respond with only valid JSON in the exact format requested.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          // max_tokens: maxTokens  // Commented out to allow unlimited tokens for large requests
+        });
+
+        const generatedText = this.parseResponse(response);
+
+        // Use robust JSON parser from base class
+        const parsedResponse = this.safeJSONParse(generatedText);
+        const standardized = this.standardizeResponse(
+          parsedResponse,
+          numQuestions
+        );
+
+        // Trim to requested number of questions
+        if (standardized.questions.length > numQuestions) {
+          standardized.questions = standardized.questions.slice(
+            0,
+            numQuestions
+          );
+          standardized.metadata.numQuestions = numQuestions;
         }
 
-        const fallbackModel = this.supportedModels[this.currentModelIndex];
-        console.log(`Falling back to Kimi CN model: ${fallbackModel}`);
-        
-        this.currentModel = fallbackModel;
-        return true;
-    }
+        standardized.metadata.model = this.currentModel;
+        return standardized;
+      } catch (error) {
+        const isLastAttempt = attempt === this.maxRetries;
 
-    /**
-     * Check if Kimi provider is configured
-     */
-    isConfigured() {
-        return !!(this.config.apiKey);
-    }
+        // Check if it's a 404 error (model not found)
+        if (error.message && error.message.includes("404")) {
+          logger.warn(`Kimi model not available (404)`, {
+            model: this.currentModel,
+          });
 
-    /**
-     * Parse Kimi response to extract generated text
-     */
-    parseResponse(response) {
-        if (!response.choices || !response.choices.length) {
-            throw new Error('No choices in Kimi response');
+          const fallbackSuccess = await this.tryFallbackModel();
+          if (fallbackSuccess) {
+            logger.info(`Retrying with fallback model`, {
+              model: this.currentModel,
+            });
+            attempt = 0;
+            continue;
+          } else {
+            throw new Error(
+              `All Kimi models unavailable. Please check your API key or subscription.`
+            );
+          }
         }
 
-        const message = response.choices[0].message;
-        if (!message || !message.content) {
-            throw new Error('No content in Kimi response');
+        // Check if it's a rate limit error (429)
+        if (
+          error.message &&
+          (error.message.includes("429") ||
+            error.message.includes("rate limit"))
+        ) {
+          const delay = this.baseDelay * Math.pow(2, attempt - 1);
+
+          if (!isLastAttempt) {
+            logger.warn(`Kimi rate limited`, {
+              model: this.currentModel,
+              attempt,
+              maxRetries: this.maxRetries,
+              retryDelaySec: delay / 1000,
+            });
+            await this.sleep(delay);
+            continue;
+          } else {
+            logger.warn(`Kimi rate limited after all attempts`, {
+              model: this.currentModel,
+              attempts: this.maxRetries,
+            });
+            throw new Error(
+              `Kimi model ${this.currentModel} is rate limited. Please try again later.`
+            );
+          }
         }
 
-        return message.content;
-    }
+        // Check if it's a 503 error (service unavailable)
+        if (
+          error.message &&
+          (error.message.includes("503") ||
+            error.message.includes("service unavailable"))
+        ) {
+          const delay = this.baseDelay * Math.pow(2, attempt - 1);
 
-    /**
-     * Generate questions using Kimi AI with automatic model fallback
-     */
-    async generateQuestions(text, options = {}) {
-        const numQuestions = options.numQuestions || 10;
-        
-        // Ensure difficulty is always set to 'mixed' by default
-        const promptOptions = {
-            numQuestions,
-            bloomLevel: options.bloomLevel || 'apply',
-            difficulty: options.difficulty || 'mixed'
-        };
-
-        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
-            try {
-                const prompt = this.buildPrompt(text, promptOptions);
-
-                // Calculate max_tokens based on number of questions
-                // Each question needs ~350-400 tokens (question + options + rationale)
-                // Add buffer for analysis and JSON structure
-                // const maxTokens = Math.max(2000, numQuestions * 400 + 500);
-
-                const response = await this.client.chat.completions.create({
-                    model: this.currentModel,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: 'You are an expert educator creating multiple choice quiz questions. Respond with only valid JSON in the exact format requested.'
-                        },
-                        {
-                            role: 'user',
-                            content: prompt
-                        }
-                    ],
-                    temperature: 0.7
-                    // max_tokens: maxTokens  // Commented out to allow unlimited tokens for large requests
-                });
-
-                const generatedText = this.parseResponse(response);
-                
-                // Use robust JSON parser from base class
-                const parsedResponse = this.safeJSONParse(generatedText);
-                const standardized = this.standardizeResponse(parsedResponse, numQuestions);
-                
-                // Trim to requested number of questions
-                if (standardized.questions.length > numQuestions) {
-                    standardized.questions = standardized.questions.slice(0, numQuestions);
-                    standardized.metadata.numQuestions = numQuestions;
-                }
-                
-                standardized.metadata.model = this.currentModel;
-                return standardized;
-                
-            } catch (error) {
-                const isLastAttempt = attempt === this.maxRetries;
-                
-                // Check if it's a 404 error (model not found)
-                if (error.message && error.message.includes('404')) {
-                    console.warn(`⚠ Kimi model ${this.currentModel} not available (404)`);
-                    
-                    const fallbackSuccess = await this.tryFallbackModel();
-                    if (fallbackSuccess) {
-                        console.log(`✓ Retrying with fallback model: ${this.currentModel}`);
-                        attempt = 0;
-                        continue;
-                    } else {
-                        throw new Error(`All Kimi models unavailable. Please check your API key or subscription.`);
-                    }
-                }
-                
-                // Check if it's a rate limit error (429)
-                if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
-                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
-                    
-                    if (!isLastAttempt) {
-                        console.log(`⚠ Kimi API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} rate limited. Retrying in ${delay/1000}s...`);
-                        await this.sleep(delay);
-                        continue;
-                    } else {
-                        console.warn(`⚠ ${this.currentModel} rate limited after ${this.maxRetries} attempts.`);
-                        throw new Error(`Kimi model ${this.currentModel} is rate limited. Please try again later.`);
-                    }
-                }
-                
-                // Check if it's a 503 error (service unavailable)
-                if (error.message && (error.message.includes('503') || error.message.includes('service unavailable'))) {
-                    const delay = this.baseDelay * Math.pow(2, attempt - 1);
-                    
-                    if (!isLastAttempt) {
-                        console.log(`⚠ Kimi API: Attempt ${attempt}/${this.maxRetries} - ${this.currentModel} unavailable. Retrying in ${delay/1000}s...`);
-                        await this.sleep(delay);
-                        continue;
-                    } else {
-                        console.warn(`⚠ ${this.currentModel} unavailable after ${this.maxRetries} attempts.`);
-                        throw new Error(`Kimi model ${this.currentModel} is currently unavailable. Please try again in a few moments.`);
-                    }
-                }
-                
-                console.error('Kimi API Error:', error.message);
-                
-                if (isLastAttempt) {
-                    throw new Error(`Kimi generation failed: ${error.message}`);
-                }
-            }
+          if (!isLastAttempt) {
+            logger.warn(`Kimi unavailable`, {
+              model: this.currentModel,
+              attempt,
+              maxRetries: this.maxRetries,
+              retryDelaySec: delay / 1000,
+            });
+            await this.sleep(delay);
+            continue;
+          } else {
+            logger.warn(`Kimi unavailable after all attempts`, {
+              model: this.currentModel,
+              attempts: this.maxRetries,
+            });
+            throw new Error(
+              `Kimi model ${this.currentModel} is currently unavailable. Please try again in a few moments.`
+            );
+          }
         }
-        
-        throw new Error('Failed to generate questions after all retries');
-    }
 
-    /**
-     * Test Kimi connection with automatic fallback
-     */
-    async testConnection() {
-        try {
-            await this.initialize();
-            const testText = 'Machine learning is a subset of artificial intelligence.';
-            const result = await this.generateQuestions(testText, { numQuestions: 1 });
-            
-            return {
-                success: true,
-                message: `Kimi connection successful (using ${this.currentModel})`,
-                provider: this.name,
-                model: this.currentModel,
-                testResult: result.questions?.length === 1 ? 'pass' : 'unexpected response'
-            };
-        } catch (error) {
-            return {
-                success: false,
-                message: `Kimi connection failed: ${error.message}`,
-                provider: this.name,
-                error: error.message
-            };
+        logger.error("Kimi API Error", { error: error.message });
+
+        if (isLastAttempt) {
+          throw new Error(`Kimi generation failed: ${error.message}`);
         }
+      }
     }
 
-    /**
-     * Get Kimi-specific configuration options
-     */
-    getConfigSchema() {
-        return {
-            type: 'object',
-            properties: {
-                apiKey: {
-                    type: 'string',
-                    description: 'Kimi (Moonshot) API Key',
-                    required: true,
-                    envVar: 'KIMI_API_KEY'
-                },
-                model: {
-                    type: 'string',
-                    description: 'Kimi model to use',
-                    enum: this.supportedModels,
-                    default: 'moonshot-v1-8k'
-                },
-                baseURL: {
-                    type: 'string',
-                    description: 'Kimi API base URL',
-                    default: 'https://api.moonshot.cn/v1'
-                }
-            }
-        };
+    throw new Error("Failed to generate questions after all retries");
+  }
+
+  /**
+   * Test Kimi connection with automatic fallback
+   */
+  async testConnection() {
+    try {
+      await this.initialize();
+      const testText =
+        "Machine learning is a subset of artificial intelligence.";
+      const result = await this.generateQuestions(testText, {
+        numQuestions: 1,
+      });
+
+      return {
+        success: true,
+        message: `Kimi connection successful (using ${this.currentModel})`,
+        provider: this.name,
+        model: this.currentModel,
+        testResult:
+          result.questions?.length === 1 ? "pass" : "unexpected response",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Kimi connection failed: ${error.message}`,
+        provider: this.name,
+        error: error.message,
+      };
     }
+  }
+
+  /**
+   * Get Kimi-specific configuration options
+   */
+  getConfigSchema() {
+    return {
+      type: "object",
+      properties: {
+        apiKey: {
+          type: "string",
+          description: "Kimi (Moonshot) API Key",
+          required: true,
+          envVar: "KIMI_API_KEY",
+        },
+        model: {
+          type: "string",
+          description: "Kimi model to use",
+          enum: this.supportedModels,
+          default: "moonshot-v1-8k",
+        },
+        baseURL: {
+          type: "string",
+          description: "Kimi API base URL",
+          default: "https://api.moonshot.cn/v1",
+        },
+      },
+    };
+  }
 }
 
 module.exports = KimiCnProvider;
