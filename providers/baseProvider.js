@@ -15,9 +15,15 @@ const QuestionSchema = z.object({
   optionc: z.string().min(1, "Option C is required"),
   optiond: z.string().min(1, "Option D is required"),
   correctanswer: z.enum(["A", "B", "C", "D"]),
-  difficulty: z.enum(["easy", "medium", "hard", "mixed"]).default("medium"),
+  // Transform to lowercase before validating
+  difficulty: z
+    .string()
+    .transform((v) => v?.toLowerCase())
+    .pipe(z.enum(["easy", "medium", "hard", "mixed"]))
+    .default("medium"),
   cognitive_level: z.string().optional(),
   rationale: z.string().optional(),
+  question_image: z.string().nullable().optional(), // imageId if question references a specific image
 });
 
 const AIResponseSchema = z.object({
@@ -229,6 +235,7 @@ class BaseAIProvider {
       bloomLevel = "apply",
       difficulty = "mixed",
       distributionPlan = null,
+      imageMetadata = [], // Available images with their IDs
     } = options;
 
     let sourceText =
@@ -237,6 +244,40 @@ class BaseAIProvider {
         : text;
     let difficultyRequirements = "";
     let bloomDefinitions = "";
+    let imageInventory = "";
+
+    // Build image inventory if images are available
+    logger.debug(`[buildPrompt] imageMetadata received:`, {
+      count: imageMetadata?.length || 0,
+      ids: imageMetadata?.map((img) => img.imageId) || [],
+    });
+
+    if (imageMetadata && imageMetadata.length > 0) {
+      const imageList = imageMetadata
+        .map(
+          (img, idx) =>
+            `   - Image ${idx + 1} (imageId: "${img.imageId}") - from ${
+              img.label || `Page ${img.page}`
+            }`
+        )
+        .join("\n");
+
+      imageInventory = `
+<available_images>
+The following ${imageMetadata.length} image(s) are attached and visible to you in this conversation.
+When you create a question that references one of these images (figures, tables, diagrams), 
+you MUST include its imageId in the "question_image" field.
+
+${imageList}
+
+IMPORTANT: Match figures/tables in the text to these images based on what you see in them.
+If a question references any visual (e.g., "Figure 3.3", "the table", "the diagram"), include the corresponding imageId.
+</available_images>`;
+
+      logger.info(
+        `[buildPrompt] Image inventory added to prompt with ${imageMetadata.length} images`
+      );
+    }
 
     if (distributionPlan && distributionPlan.breakdown) {
       // Strict Distribution Mode
@@ -284,6 +325,7 @@ The following text is the source material for the exam:
 """
 ${sourceText}
 """
+${imageInventory}
 </input_context>
 
 <task_configuration>
@@ -300,6 +342,10 @@ ${difficultyRequirements}
     2. **RIGOR:** Questions must test concepts, not just vocabulary.
     3. **DISTRACTORS:** Must be plausible, roughly same length, and clearly incorrect.
     4. **RATIONALE:** Provide clear explanation for correct answer and why distractors are wrong.
+    5. **IMAGE REFERENCE:** If a question is about a specific figure/table/image:
+       - In questiontext: refer to it naturally (e.g., "According to Figure 3..." or "Based on the table...")
+       - In question_image: put the imageId from <available_images> 
+       - NEVER put the imageId in the question text itself
     </design_rules>
 </pedagogical_guidelines>
 
@@ -310,15 +356,18 @@ Use this exact schema:
   "analysis": "Brief analysis of key concepts...",
   "questions": [
     {
-      "questiontext": "Stem...",
-      "optiona": "A", "optionb": "B", "optionc": "C", "optiond": "D",
+      "questiontext": "Based on Figure 3, which algorithm has the lowest time complexity?",
+      "optiona": "BFS", "optionb": "DFS", "optionc": "A*", "optiond": "Dijkstra",
       "correctanswer": "C",
       "difficulty": "medium",
       "cognitive_level": "apply",
-      "rationale": "Explanation..."
+      "rationale": "Explanation...",
+      "question_image": "img_59_1_cf0918"
     }
   ]
 }
+
+IMPORTANT: The question_image field should contain ONLY the imageId string (e.g., "img_abc123"), NOT embedded in the question text.
 </output_format>
 
 <execution_step>

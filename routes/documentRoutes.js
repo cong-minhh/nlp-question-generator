@@ -121,20 +121,40 @@ router.post("/generate", async (req, res, next) => {
       imageMetadata: finalInput.imageMetadata || [],
     });
 
-    // 5. Enhance questions with source references
-    if (result.questions && finalInput.imageMetadata) {
-      result.questions = result.questions.map((q) => ({
-        ...q,
-        sources: {
-          slides: options?.includeSlides || [],
-          images: (finalInput.imageMetadata || []).map((img) => ({
-            imageId: img.imageId,
-            label: img.label,
-            url: img.url,
-            reason: "Used in context for generation",
-          })),
-        },
-      }));
+    // 5. Enhance questions with source references and convert imageIds to URLs
+    if (result.questions) {
+      const imageMetadataMap = new Map(
+        (finalInput.imageMetadata || []).map((img) => [img.imageId, img])
+      );
+
+      result.questions = result.questions.map((q) => {
+        const enhanced = {
+          ...q,
+          sources: {
+            slides: options?.includeSlides || [],
+            images: (finalInput.imageMetadata || []).map((img) => ({
+              imageId: img.imageId,
+              label: img.label,
+              url: img.url,
+              reason: "Used in context for generation",
+            })),
+          },
+        };
+
+        // Convert question_image imageId to full URL
+        if (q.question_image) {
+          const imgMeta = imageMetadataMap.get(q.question_image);
+          if (imgMeta && imgMeta.url) {
+            enhanced.question_image = imgMeta.url;
+          } else {
+            // Try to build URL from imageId
+            const assetUrl = imageAssetStorage.getUrl(q.question_image, docId);
+            enhanced.question_image = assetUrl || null;
+          }
+        }
+
+        return enhanced;
+      });
     }
 
     res.json({
