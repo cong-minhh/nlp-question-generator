@@ -28,7 +28,7 @@ class SessionAnalyzer {
             logger.info(`Generating session analysis using ${provider.name}...`);
             const rawResponse = await provider.generateResponse(prompt);
             
-            logger.info(`Session analysis completed`, { provider: provider.name, responseLength: rawResponse.length });
+            logger.info(`Session analysis completed!`);
 
             // Parse the response (expecting JSON from the prompt instructions)
             return this.parseAnalysisResponse(rawResponse);
