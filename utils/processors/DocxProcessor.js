@@ -3,6 +3,16 @@ const AdmZip = require("adm-zip");
 const path = require("path");
 const crypto = require("crypto");
 const { logger } = require("../logger");
+const {
+  checkFileSize,
+  logMemoryUsage,
+  suggestGC,
+  LARGE_FILE_THRESHOLD,
+} = require("../streamUtils");
+
+// Maximum DOCX file size (100MB) - ZIP requires full file in memory
+const MAX_DOCX_SIZE =
+  parseInt(process.env.MAX_FILE_SIZE_MB) * 1024 * 1024 || 100 * 1024 * 1024;
 
 /**
  * Extract text and images from a DOCX file
@@ -15,6 +25,17 @@ const { logger } = require("../logger");
 async function processDocx(filePath, options = {}) {
   const { docId, imageAssetStorage } = options;
   const saveToStorage = docId && imageAssetStorage;
+
+  // Pre-check file size
+  const sizeCheck = await checkFileSize(filePath, MAX_DOCX_SIZE);
+  if (!sizeCheck.valid) {
+    throw new Error(sizeCheck.message);
+  }
+  const isLargeFile = sizeCheck.size > LARGE_FILE_THRESHOLD;
+
+  if (isLargeFile) {
+    logMemoryUsage("Before DOCX load");
+  }
 
   try {
     const filename = path.basename(filePath);
@@ -81,7 +102,7 @@ async function processDocx(filePath, options = {}) {
               label: `Document - Image ${imageOrder}`,
               originalName: path.basename(entry.entryName),
               extension: ext === "jpg" ? "jpeg" : ext,
-            }
+            },
           );
 
           images.push({
@@ -109,8 +130,14 @@ async function processDocx(filePath, options = {}) {
     logger.info(
       `DOCX Extraction: ${text.length} chars, ${images.length} images${
         saveToStorage ? " (saved to storage)" : ""
-      }.`
+      }.`,
     );
+
+    // Cleanup for large files
+    if (isLargeFile) {
+      logMemoryUsage("After DOCX extraction");
+      suggestGC();
+    }
 
     return {
       text,
@@ -126,7 +153,7 @@ async function processDocx(filePath, options = {}) {
   } catch (error) {
     logger.error("Error processing DOCX:", error);
     throw new Error(
-      `Failed to process DOCX ${path.basename(filePath)}: ${error.message}`
+      `Failed to process DOCX ${path.basename(filePath)}: ${error.message}`,
     );
   }
 }

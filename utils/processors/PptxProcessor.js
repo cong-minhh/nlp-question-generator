@@ -1,7 +1,18 @@
 const crypto = require("crypto");
 const AdmZip = require("adm-zip");
 const path = require("path");
+const fsPromises = require("fs").promises;
 const { logger } = require("../logger");
+const {
+  checkFileSize,
+  logMemoryUsage,
+  suggestGC,
+  LARGE_FILE_THRESHOLD,
+} = require("../streamUtils");
+
+// Maximum PPTX file size (100MB) - ZIP requires full file in memory
+const MAX_PPTX_SIZE =
+  parseInt(process.env.MAX_FILE_SIZE_MB) * 1024 * 1024 || 100 * 1024 * 1024;
 
 /**
  * Extract text and images from a PPTX file, with support for slide ranges.
@@ -17,6 +28,17 @@ const { logger } = require("../logger");
 async function processPptx(filePath, options = {}) {
   const { docId, imageAssetStorage } = options;
   const saveToStorage = docId && imageAssetStorage;
+
+  // Pre-check file size
+  const sizeCheck = await checkFileSize(filePath, MAX_PPTX_SIZE);
+  if (!sizeCheck.valid) {
+    throw new Error(sizeCheck.message);
+  }
+  const isLargeFile = sizeCheck.size > LARGE_FILE_THRESHOLD;
+
+  if (isLargeFile) {
+    logMemoryUsage("Before PPTX load");
+  }
 
   try {
     const zip = new AdmZip(filePath);
@@ -37,7 +59,7 @@ async function processPptx(filePath, options = {}) {
     const endSlide = options.pageEnd || totalSlides;
 
     logger.info(
-      `PPTX Extraction: Found ${totalSlides} slides. Requesting ${startSlide}-${endSlide}.`
+      `PPTX Extraction: Found ${totalSlides} slides. Requesting ${startSlide}-${endSlide}.`,
     );
 
     let extractedText = "";
@@ -77,7 +99,7 @@ async function processPptx(filePath, options = {}) {
 
       // --- Extract Images ---
       const relsEntryName = `ppt/slides/_rels/${path.basename(
-        slideEntry.entryName
+        slideEntry.entryName,
       )}.rels`;
       const relsEntry = zip.getEntry(relsEntryName);
       const slideImages = [];
@@ -139,7 +161,7 @@ async function processPptx(filePath, options = {}) {
                   label: `Slide ${slideNum} - Image ${slideImageOrder}`,
                   originalName: path.basename(normalizedTarget),
                   extension: ext === "jpg" ? "jpeg" : ext,
-                }
+                },
               );
 
               slideImages.push({
@@ -149,7 +171,7 @@ async function processPptx(filePath, options = {}) {
                 order: slideImageOrder,
                 label: `Slide ${slideNum} - Image ${slideImageOrder}`,
                 source: `${filename} - Slide ${slideNum} (${path.basename(
-                  normalizedTarget
+                  normalizedTarget,
                 )})`,
               });
             } else {
@@ -159,7 +181,7 @@ async function processPptx(filePath, options = {}) {
                 mediaType: mimeType,
                 data: buffer.toString("base64"),
                 source: `${filename} - Slide ${slideNum} (${path.basename(
-                  normalizedTarget
+                  normalizedTarget,
                 )})`,
                 page: slideNum,
                 order: slideImageOrder,
@@ -167,7 +189,7 @@ async function processPptx(filePath, options = {}) {
             }
           } else {
             logger.warn(
-              `Warning: Image target ${normalizedTarget} not found in zip.`
+              `Warning: Image target ${normalizedTarget} not found in zip.`,
             );
           }
         }
@@ -187,11 +209,18 @@ async function processPptx(filePath, options = {}) {
     logger.info(
       `PPTX Extraction Complete: ${extractedText.length} chars, ${
         extractedImages.length
-      } images${saveToStorage ? " (saved to storage)" : ""}.`
+      } images${saveToStorage ? " (saved to storage)" : ""}.`,
     );
     logger.info(
-      `Optimization: Skipped ${duplicateCount} duplicates and ${smallCount} tiny images.`
+      `Optimization: Skipped ${duplicateCount} duplicates and ${smallCount} tiny images.`,
     );
+
+    // Cleanup for large files
+    if (isLargeFile) {
+      logMemoryUsage("After PPTX extraction");
+      suggestGC();
+    }
+
     return {
       text: extractedText,
       images: extractedImages,

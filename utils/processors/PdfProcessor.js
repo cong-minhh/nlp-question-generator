@@ -2,6 +2,13 @@ const fs = require("fs").promises;
 const { PNG } = require("pngjs");
 const pdfParse = require("pdf-parse"); // Fallback
 const { logger } = require("../logger");
+const {
+  streamFileToBuffer,
+  checkFileSize,
+  logMemoryUsage,
+  suggestGC,
+  LARGE_FILE_THRESHOLD,
+} = require("../streamUtils");
 
 /**
  * Convert PDF image object to PNG buffer
@@ -44,7 +51,7 @@ function convertToPng(img) {
       const buffer = PNG.sync.write(png);
       resolve(buffer);
     } catch (e) {
-      logger.warn("PNG conversion error:", e.message);
+      logger.warn("PNG conversion error", { error: e.message });
       resolve(null);
     }
   });
@@ -60,6 +67,13 @@ async function processPdf(filePath, options = {}) {
   const { docId, imageAssetStorage } = options;
   const saveToStorage = docId && imageAssetStorage;
 
+  // Check file size before processing
+  const sizeCheck = await checkFileSize(filePath);
+  if (!sizeCheck.valid) {
+    throw new Error(sizeCheck.message);
+  }
+  const isLargeFile = sizeCheck.size > LARGE_FILE_THRESHOLD;
+
   let pdfjsLib;
   try {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -67,11 +81,13 @@ async function processPdf(filePath, options = {}) {
   } catch (e) {
     logger.warn(
       "Failed to load pdfjs-dist via import, images will be skipped, text via fallback:",
-      e.message
+      e.message,
     );
-    // Fallback for text only
+    // Fallback for text only - use streaming for large files
     try {
-      const dataBuffer = await fs.readFile(filePath);
+      const dataBuffer = isLargeFile
+        ? await streamFileToBuffer(filePath, sizeCheck.size)
+        : await fs.readFile(filePath);
       const data = await pdfParse(dataBuffer);
       return { text: data.text, images: [], pages: [] };
     } catch (err) {
@@ -80,7 +96,14 @@ async function processPdf(filePath, options = {}) {
   }
 
   try {
-    const dataBuffer = await fs.readFile(filePath);
+    // Use streaming for large files to avoid memory spikes
+    if (isLargeFile) {
+      logMemoryUsage("Before PDF load");
+    }
+
+    const dataBuffer = isLargeFile
+      ? await streamFileToBuffer(filePath, sizeCheck.size)
+      : await fs.readFile(filePath);
     const data = new Uint8Array(dataBuffer);
 
     const loadingTask = pdfjsLib.getDocument({
@@ -93,8 +116,9 @@ async function processPdf(filePath, options = {}) {
     const startPage = options.pageStart || 1;
     const endPage = options.pageEnd || doc.numPages;
 
+    const sizeMB = (sizeCheck.size / 1024 / 1024).toFixed(1);
     logger.info(
-      `Processing PDF (Pages ${startPage}-${endPage} of ${doc.numPages})...`
+      `Processing PDF (${sizeMB}MB, Pages ${startPage}-${endPage} of ${doc.numPages})...`,
     );
 
     let collectedText = [];
@@ -159,7 +183,7 @@ async function processPdf(filePath, options = {}) {
                       label: `Page ${i} - Image ${pageImageOrder}`,
                       originalName: arg,
                       extension: "png",
-                    }
+                    },
                   );
 
                   collectedImages.push({
@@ -206,7 +230,7 @@ async function processPdf(filePath, options = {}) {
       const pageImages = collectedImages.filter(
         (img) =>
           img.page === page.pageNumber ||
-          (img.source && img.source.startsWith(`Page ${page.pageNumber} -`))
+          (img.source && img.source.startsWith(`Page ${page.pageNumber} -`)),
       );
 
       const cleanItems = page.items.filter((item) => {
@@ -234,8 +258,14 @@ async function processPdf(filePath, options = {}) {
     logger.info(
       `PDF Extraction: ${cleanPages.join("").length} chars, ${
         collectedImages.length
-      } images${saveToStorage ? " (saved to storage)" : ""}.`
+      } images${saveToStorage ? " (saved to storage)" : ""}.`,
     );
+
+    // Cleanup for large files
+    if (isLargeFile) {
+      logMemoryUsage("After PDF extraction");
+      suggestGC();
+    }
 
     return {
       text: cleanPages.join("\n"),

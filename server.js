@@ -7,6 +7,7 @@ const apiRoutes = require("./routes/api");
 const { ensureUploadsDirectory } = require("./utils/fileUtils");
 const ProviderManager = require("./providers/providerManager");
 const ErrorHandler = require("./utils/errorHandler");
+const RateLimiter = require("./middleware/rateLimiter");
 const cliUI = require("./cli/ascii");
 const { logger } = require("./utils/logger");
 
@@ -17,6 +18,17 @@ const PORT = process.env.PORT || 3000;
 app.use(cors()); // Enable CORS for all routes
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// Initialize rate limiter
+const rateLimiter = new RateLimiter({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 1000,
+  maxRequests: parseInt(process.env.RATE_LIMIT_MAX) || 30,
+});
+rateLimiter.startCleanup();
+app.locals.rateLimiter = rateLimiter;
+
+// Apply rate limiting to API routes
+app.use("/api", rateLimiter.middleware());
 
 // API Routes
 app.use("/api", apiRoutes);
@@ -86,7 +98,7 @@ async function initializeServer() {
           theme: "purple",
           layout: "modern",
           darkMode: true,
-        })
+        }),
       );
     } catch (err) {
       logger.warn("Failed to load API documentation", { error: err.message });
@@ -139,7 +151,7 @@ async function initializeServer() {
 
     if (jobQueue.enabled) {
       cliUI.showSuccess(
-        `Job queue initialized (${jobQueue.maxConcurrent} workers)`
+        `Job queue initialized (${jobQueue.maxConcurrent} workers)`,
       );
     }
 
@@ -183,10 +195,10 @@ async function initializeServer() {
       logger.info(`Server started`, { port: PORT, env: process.env.NODE_ENV });
 
       console.log(
-        `\n${cliUI.colors.green}Server is ready!${cliUI.colors.reset}`
+        `\n${cliUI.colors.green}Server is ready!${cliUI.colors.reset}`,
       );
       console.log(
-        `${cliUI.colors.cyan}NLP Question Generator running on port ${PORT}${cliUI.colors.reset}`
+        `${cliUI.colors.cyan}NLP Question Generator running on port ${PORT}${cliUI.colors.reset}`,
       );
 
       // Show security status
@@ -197,34 +209,34 @@ async function initializeServer() {
       if (apiMode === "private" && hasApiKey) {
         logger.info("Security mode: PRIVATE (Authenticated)");
         console.log(
-          `\n${cliUI.colors.green}Security: PRIVATE MODE (API key required)${cliUI.colors.reset}`
+          `\n${cliUI.colors.green}Security: PRIVATE MODE (API key required)${cliUI.colors.reset}`,
         );
       } else if (apiMode === "private" && !hasApiKey) {
         logger.warn("Security mode: PRIVATE but missing API key");
         console.log(
-          `\n${cliUI.colors.yellow}Security: PRIVATE MODE but no API key set!${cliUI.colors.reset}`
+          `\n${cliUI.colors.yellow}Security: PRIVATE MODE but no API key set!${cliUI.colors.reset}`,
         );
         console.log(
-          `${cliUI.colors.gray}   Run 'npm run generate-key' to create an API key${cliUI.colors.reset}`
+          `${cliUI.colors.gray}   Run 'npm run generate-key' to create an API key${cliUI.colors.reset}`,
         );
       } else {
         logger.info("Security mode: PUBLIC (No authentication)");
         console.log(
-          `\n${cliUI.colors.yellow}Security: PUBLIC MODE (no authentication)${cliUI.colors.reset}`
+          `\n${cliUI.colors.yellow}Security: PUBLIC MODE (no authentication)${cliUI.colors.reset}`,
         );
         console.log(
-          `${cliUI.colors.gray}Set API_MODE=private in .env for production${cliUI.colors.reset}`
+          `${cliUI.colors.gray}Set API_MODE=private in .env for production${cliUI.colors.reset}`,
         );
       }
 
       console.log(
-        `\n${cliUI.colors.yellow}API Documentation: ${cliUI.colors.cyan}http://localhost:${PORT}/docs${cliUI.colors.reset}`
+        `\n${cliUI.colors.yellow}API Documentation: ${cliUI.colors.cyan}http://localhost:${PORT}/docs${cliUI.colors.reset}`,
       );
       console.log(
-        `${cliUI.colors.gray}Use 'npm run setup' for first-time configuration${cliUI.colors.reset}`
+        `${cliUI.colors.gray}Use 'npm run setup' for first-time configuration${cliUI.colors.reset}`,
       );
       console.log(
-        `${cliUI.colors.gray}Use 'npm run config' for API key configuration${cliUI.colors.reset}`
+        `${cliUI.colors.gray}Use 'npm run config' for API key configuration${cliUI.colors.reset}`,
       );
       cliUI.showSystemInfo();
     });
@@ -233,7 +245,7 @@ async function initializeServer() {
     cliUI.showSection("Initialization Error");
     cliUI.showError(`Failed to initialize server: ${error.message}`);
     cliUI.showInfo(
-      "Make sure all dependencies are installed and configuration is correct"
+      "Make sure all dependencies are installed and configuration is correct",
     );
     process.exit(1);
   }
