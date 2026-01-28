@@ -146,30 +146,10 @@ class LocalProvider extends BaseAIProvider {
 
         // Safety enforcement for VRAM protection
         const ctxSize = this.chunkConfig.ctxSize;
-        const estimatedInputTokens = this.estimateTokens(text, images);
-        const safetyBuffer = 200; // Reduced from 500 to allow more output space
-        let availableOutputTokens =
-          ctxSize - estimatedInputTokens - safetyBuffer;
-
-        if (availableOutputTokens < 200) {
-          const msg = `Input too large for context window (${ctxSize}). Estimated input: ${estimatedInputTokens} tokens. Available for output: ${availableOutputTokens}.`;
-          logger.error(msg);
-          throw new Error(
-            `${msg} Try reducing LOCAL_MAX_IMAGES or LOCAL_MAX_TEXT_CHARS.`,
-          );
-        }
 
         if (attempt > 0) {
           logger.info(`[LocalProvider] Retry attempt ${attempt}/${maxRetries}`);
         }
-
-        logger.info(`[LocalProvider] Token Estimate`, {
-          inputRaw: text.length,
-          images: images.length,
-          estInputTokens: estimatedInputTokens,
-          availableOutput: availableOutputTokens,
-          ctxSize,
-        });
 
         logger.debug(`[LocalProvider] Single request`, {
           textLength: text.length,
@@ -209,14 +189,9 @@ class LocalProvider extends BaseAIProvider {
               this.chunkConfig.ctxSize ||
               parseInt(process.env.LOCAL_CTX_SIZE) ||
               4096,
-            // Dynamic num_predict: ~300 tokens per question + 200 buffer
-            // Cap at 2048 to prevent runaways and save VRAM
-            // CRITICAL: Prevent OOM by capping at availableOutputTokens
-            num_predict: Math.min(
-              2048,
-              numQuestions * 300 + 200,
-              availableOutputTokens,
-            ),
+            // Dynamic num_predict: ~400 tokens per question + 500 buffer
+            // Cap at 8192 to prevent runaways while allowing large contexts
+            num_predict: Math.min(8192, numQuestions * 400 + 500),
           },
           keep_alive: this.chunkConfig.keepAlive || "5m", // Keep model loaded
         };
@@ -650,19 +625,6 @@ class LocalProvider extends BaseAIProvider {
       logger.error("Local LLM request error", { error: error.message });
       throw error;
     }
-  }
-
-  /**
-   * Estimate token usage to prevent OOM
-   * Qwen-VL uses ~1300 tokens per image + text tokens
-   */
-  estimateTokens(text, images) {
-    // 1 token ~= 3.5 chars for English, but code/mixed can be denser. Using 3 for safety.
-    const textTokens = Math.ceil(text.length / 3);
-    // Vision models "expand" images. Qwen-VL is roughly 1000-1500 depending on resolution.
-    // We use a safe upper bound estimate.
-    const imageTokens = images.length * 1300;
-    return textTokens + imageTokens;
   }
 
   /**
