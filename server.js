@@ -140,9 +140,19 @@ async function initializeServer() {
     // Restore pending jobs from database
     await jobQueue.restore();
 
-    // Initialize job processor
+    // Initialize job processor with document services
     const JobProcessor = require("./utils/jobProcessor");
-    const jobProcessor = new JobProcessor(jobQueue, questionGenerator);
+    const documentStorage = require("./services/storage/DocumentStorage");
+    const imageAssetStorage = require("./services/storage/ImageAssetStorage");
+    const fileProcessingService = require("./services/FileProcessingService");
+    const ContentFilter = require("./utils/ContentFilter");
+
+    const jobProcessor = new JobProcessor(jobQueue, questionGenerator, {
+      documentStorage,
+      imageAssetStorage,
+      fileProcessingService,
+      ContentFilter,
+    });
     jobProcessor.start();
 
     app.locals.jobQueue = jobQueue;
@@ -151,7 +161,7 @@ async function initializeServer() {
 
     if (jobQueue.enabled) {
       cliUI.showSuccess(
-        `Job queue initialized (${jobQueue.maxConcurrent} workers)`,
+        `Job queue initialized (${jobQueue.maxConcurrent} workers, document jobs enabled)`,
       );
     }
 
@@ -191,8 +201,11 @@ async function initializeServer() {
     app.use(ErrorHandler.expressErrorHandler);
 
     // Start server
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       logger.info(`Server started`, { port: PORT, env: process.env.NODE_ENV });
+
+      // Increase timeout to 20 minutes for long-running Local LLM tasks
+      server.setTimeout(20 * 60 * 1000);
 
       console.log(
         `\n${cliUI.colors.green}Server is ready!${cliUI.colors.reset}`,

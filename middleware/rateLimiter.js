@@ -27,7 +27,7 @@ class RateLimiter {
       parseInt(process.env.RATE_LIMIT_WINDOW_MS) ||
       60 * 1000;
     this.maxRequests =
-      options.maxRequests || parseInt(process.env.RATE_LIMIT_MAX) || 30;
+      options.maxRequests || parseInt(process.env.RATE_LIMIT_MAX) || 100;
     this.skipSuccessfulRequests = options.skipSuccessfulRequests || false;
     this.keyGenerator = options.keyGenerator || this.defaultKeyGenerator;
 

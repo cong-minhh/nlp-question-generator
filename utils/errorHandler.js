@@ -4,6 +4,14 @@
  */
 const { logger } = require("./logger");
 
+// Import custom error classes for instance checking
+const {
+  ParseError,
+  ValidationError,
+  InferenceError,
+  ImageModeError,
+} = require("../providers/errors");
+
 class ErrorHandler {
   /**
    * Error categories
@@ -16,6 +24,9 @@ class ErrorHandler {
     INVALID_INPUT: "invalid_input",
     PROVIDER_ERROR: "provider_error",
     PARSING_ERROR: "parsing_error",
+    VALIDATION_ERROR: "validation_error",
+    INFERENCE_ERROR: "inference_error",
+    IMAGE_MODE_ERROR: "image_mode_error",
     CONFIGURATION: "configuration",
     UNKNOWN: "unknown",
   };
@@ -26,6 +37,20 @@ class ErrorHandler {
    * @returns {string} - Error category
    */
   static categorizeError(error) {
+    // Check for custom error class instances first (most precise)
+    if (error instanceof ParseError) {
+      return this.ErrorTypes.PARSING_ERROR;
+    }
+    if (error instanceof ValidationError) {
+      return this.ErrorTypes.VALIDATION_ERROR;
+    }
+    if (error instanceof InferenceError) {
+      return this.ErrorTypes.INFERENCE_ERROR;
+    }
+    if (error instanceof ImageModeError) {
+      return this.ErrorTypes.IMAGE_MODE_ERROR;
+    }
+
     const message = error.message?.toLowerCase() || "";
     const status = error.status || error.statusCode || 0;
 
@@ -118,11 +143,19 @@ class ErrorHandler {
   static isTransient(error) {
     const category = this.categorizeError(error);
 
+    // Check custom error classes for their own retryable property
+    if (error.retryable !== undefined) {
+      return error.retryable;
+    }
+
     const transientTypes = [
       this.ErrorTypes.RATE_LIMIT,
       this.ErrorTypes.NETWORK,
       this.ErrorTypes.TIMEOUT,
       this.ErrorTypes.PROVIDER_ERROR,
+      this.ErrorTypes.PARSING_ERROR,
+      this.ErrorTypes.INFERENCE_ERROR,
+      this.ErrorTypes.IMAGE_MODE_ERROR,
     ];
 
     return transientTypes.includes(category);
@@ -150,6 +183,12 @@ class ErrorHandler {
         "AI provider is temporarily unavailable. Please try again.",
       [this.ErrorTypes.PARSING_ERROR]:
         "Failed to parse response. Please try again.",
+      [this.ErrorTypes.VALIDATION_ERROR]:
+        "AI response did not meet expected format. Please try again.",
+      [this.ErrorTypes.INFERENCE_ERROR]:
+        "Could not determine correct answer from AI response.",
+      [this.ErrorTypes.IMAGE_MODE_ERROR]:
+        "Questions missing required image references.",
       [this.ErrorTypes.CONFIGURATION]:
         "Configuration error. Please check your settings.",
       [this.ErrorTypes.UNKNOWN]:

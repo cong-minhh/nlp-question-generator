@@ -28,7 +28,7 @@ router.post("/inspect", upload.single("file"), async (req, res, next) => {
     // 2. Check for cached extraction
     const extractionPath = path.join(
       path.dirname(metadata.path),
-      "extraction.json"
+      "extraction.json",
     );
 
     let result;
@@ -36,18 +36,18 @@ router.post("/inspect", upload.single("file"), async (req, res, next) => {
       const cachedData = await fs.readFile(extractionPath, "utf8");
       result = JSON.parse(cachedData);
       logger.info(
-        `[Document] Cache hit for ${docId} (${metadata.originalName})`
+        `[Document] Cache hit for ${docId} (${metadata.originalName})`,
       );
     } catch (e) {
       // No cache - process file
       logger.info(
-        `[Document] Processing new document: ${docId} (${metadata.originalName})`
+        `[Document] Processing new document: ${docId} (${metadata.originalName})`,
       );
 
       result = await fileProcessingService.processFile(
         metadata.path,
         metadata.originalName,
-        { docId }
+        { docId },
       );
 
       // Cache extraction result
@@ -83,7 +83,7 @@ router.post("/generate", async (req, res, next) => {
     // 2. Load Extraction Result
     const extractionPath = path.join(
       path.dirname(metadata.path),
-      "extraction.json"
+      "extraction.json",
     );
     let extractionData;
 
@@ -95,7 +95,7 @@ router.post("/generate", async (req, res, next) => {
       extractionData = await fileProcessingService.processFile(
         metadata.path,
         metadata.originalName,
-        { docId }
+        { docId },
       );
     }
 
@@ -107,7 +107,7 @@ router.post("/generate", async (req, res, next) => {
     });
 
     logger.info(
-      `[Document] Generating for ${docId}: Using ${finalInput.images.length} images and ${finalInput.text.length} chars of text.`
+      `[Document] Generating for ${docId}: Using ${finalInput.images.length} images and ${finalInput.text.length} chars of text.`,
     );
 
     // 4. Generate Questions
@@ -124,7 +124,7 @@ router.post("/generate", async (req, res, next) => {
     // 5. Enhance questions with source references and convert imageIds to URLs
     if (result.questions) {
       const imageMetadataMap = new Map(
-        (finalInput.imageMetadata || []).map((img) => [img.imageId, img])
+        (finalInput.imageMetadata || []).map((img) => [img.imageId, img]),
       );
 
       result.questions = result.questions.map((q) => {
@@ -160,6 +160,99 @@ router.post("/generate", async (req, res, next) => {
     res.json({
       success: true,
       ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/documents/generate-async
+ * Start async question generation from a previously inspected document.
+ * Returns jobId immediately, client polls /api/jobs/:id for status.
+ */
+router.post("/generate-async", async (req, res, next) => {
+  try {
+    const { docId, options } = req.body;
+
+    if (!docId) {
+      return res.status(400).json({
+        success: false,
+        error: "docId is required",
+      });
+    }
+
+    // Validate document exists
+    const metadata = await documentStorage.get(docId);
+    if (!metadata) {
+      return res.status(404).json({
+        success: false,
+        error: `Document ${docId} not found. Please inspect the document first.`,
+      });
+    }
+
+    // Get job queue from app
+    const jobQueue = req.app.locals.jobQueue;
+    if (!jobQueue) {
+      return res.status(500).json({
+        success: false,
+        error: "Job queue not initialized",
+      });
+    }
+
+    // Create document generation job
+    const jobId = await jobQueue.createJob({
+      type: "document",
+      docId,
+      options: {
+        numQuestions: options?.numQuestions || 10,
+        includeSlides: options?.includeSlides || [],
+        includeImages: options?.includeImages !== false,
+        difficulty: options?.difficulty || "mixed",
+        bloomLevel: options?.bloomLevel || "apply",
+        ...options,
+      },
+    });
+
+    logger.info(`[Async] Created document job ${jobId} for docId: ${docId}`);
+
+    // Return 202 Accepted with job info
+    res.status(202).json({
+      success: true,
+      jobId,
+      docId,
+      message: "Document generation job queued",
+      statusUrl: `/api/jobs/${jobId}`,
+      resultUrl: `/api/jobs/${jobId}/result`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/documents/:docId/status
+ * Quick check if a document has been inspected
+ */
+router.get("/:docId/status", async (req, res, next) => {
+  try {
+    const { docId } = req.params;
+    const metadata = await documentStorage.get(docId);
+
+    if (!metadata) {
+      return res.status(404).json({
+        success: false,
+        exists: false,
+        error: "Document not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      exists: true,
+      docId,
+      filename: metadata.originalName,
+      inspectedAt: metadata.createdAt,
     });
   } catch (error) {
     next(error);

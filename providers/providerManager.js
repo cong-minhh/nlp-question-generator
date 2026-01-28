@@ -191,14 +191,14 @@ class ProviderManager {
   getCurrentProvider() {
     if (!this.initialized) {
       throw new Error(
-        "ProviderManager not initialized. Call initialize() first."
+        "ProviderManager not initialized. Call initialize() first.",
       );
     }
 
     const provider = this.providers.get(this.currentProvider);
     if (!provider) {
       throw new Error(
-        `Provider '${this.currentProvider}' not found or not configured`
+        `Provider '${this.currentProvider}' not found or not configured`,
       );
     }
 
@@ -213,7 +213,7 @@ class ProviderManager {
   getProvider(providerName) {
     if (!this.initialized) {
       throw new Error(
-        "ProviderManager not initialized. Call initialize() first."
+        "ProviderManager not initialized. Call initialize() first.",
       );
     }
 
@@ -269,7 +269,7 @@ class ProviderManager {
   switchProvider(providerName) {
     if (!this.hasProvider(providerName)) {
       throw new Error(
-        `Provider '${providerName}' is not available or not configured`
+        `Provider '${providerName}' is not available or not configured`,
       );
     }
 
@@ -297,7 +297,7 @@ class ProviderManager {
             {
               text,
               numQuestions: options.numQuestions || 10,
-            }
+            },
           );
 
           // Temporarily switch to selected provider
@@ -311,7 +311,7 @@ class ProviderManager {
             const cost = this.router.costTracker.calculateCost(
               selectedProvider,
               text,
-              options.numQuestions || 10
+              options.numQuestions || 10,
             );
             this.router.recordSuccess(selectedProvider, cost);
 
@@ -356,7 +356,7 @@ class ProviderManager {
     };
 
     logger.info(
-      `Generating questions using ${this.currentProvider} provider...`
+      `Generating questions using ${this.currentProvider} provider...`,
     );
     const result = await provider.generateQuestions(text, enrichedOptions);
     logger.info(`Questions generated successfully!`);
